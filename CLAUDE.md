@@ -14,6 +14,9 @@ und als ein Bild exportiert.
 **Plan und Fortschritt:** [`docs/PLAN.md`](docs/PLAN.md). Dort stehen Architektur und Meilensteine;
 erledigte Meilensteine werden dort abgehakt.
 
+**Coding Guidelines:** [`docs/CODING_GUIDELINES.md`](docs/CODING_GUIDELINES.md). Vor dem Schreiben von Code lesen
+und einhalten; die Checkliste am Ende vor jedem Abschluss abarbeiten.
+
 ## Befehle
 
 ```sh
@@ -36,5 +39,7 @@ adb logcat -s dimuli                                   # App-Logs
 - UI-Änderungen zuerst per `cargo run` auf dem Desktop prüfen; Android-Build nur bei plattformspezifischen Änderungen.
 - Kein `unwrap()`/`expect()` in Produktionscode: ein Panic lässt die App abstürzen.
 - Neue Crates nur nach Rückfrage hinzufügen und auf Android-Kompatibilität prüfen.
+- Nach Abschluss eines Meilensteins bzw. vor einem Commit den Subagent `code-reviewer`
+  (`.claude/agents/code-reviewer.md`) ausführen und kritische Befunde beheben.
 - Nicht ohne ausdrückliche Aufforderung committen oder pushen.
 - Code und Kommentare auf Englisch, Kommunikation auf Deutsch.
