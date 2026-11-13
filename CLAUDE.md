@@ -44,7 +44,8 @@ adb logcat -s dimuli                                   # App-Logs
 - Code wird immer vom Subagent `rust-coder` (`.claude/agents/rust-coder.md`) geschrieben, auch einfache Anpassungen.
   Der Hauptagent liest, plant, koordiniert und prüft die Ergebnisse. Sehr komplexe Aufgaben vorher in kleinere,
   klar abgegrenzte Subtasks aufteilen und einzeln an `rust-coder` geben.
-- Nach Abschluss eines Meilensteins bzw. vor einem Commit den Subagent `code-reviewer`
-  (`.claude/agents/code-reviewer.md`) ausführen und kritische Befunde beheben.
+- Nach Abschluss eines Meilensteins bzw. vor dem Commit neuer Funktionalität den Subagent `code-reviewer`
+  (`.claude/agents/code-reviewer.md`) ausführen und kritische Befunde beheben. Kein erneutes Review, wenn die
+  Änderungen nur Befunde eines vorherigen Reviews umsetzen, sowie bei reinen Doku-/Konfigurationsänderungen.
 - Nicht ohne ausdrückliche Aufforderung committen oder pushen.
 - Code und Kommentare auf Englisch, Kommunikation auf Deutsch.
