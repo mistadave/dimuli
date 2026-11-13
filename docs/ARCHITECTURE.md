@@ -105,7 +105,7 @@ pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -
 | Datei | Aufgabe |
 |---|---|
 | `lib.rs` | `run(platform)`: UI erstellen, Controller verdrahten; `android_main` ruft `run` mit `AndroidPlatform` |
-| `main.rs` | Desktop-Einstieg: `run(DesktopPlatform)` |
+| `main.rs` | Desktop-Einstieg: `run(DesktopPlatform)`; wählt standardmäßig winit mit Software-Renderer (WSLg-OpenGL-Problem), `SLINT_BACKEND` überschreibt das |
 | `state.rs` | `AppState { screen, collage, images, busy: Option<Busy>, message, templates, canvas, insets, confirm_back, gesture }` samt allen Zustandsübergängen (Gesten-Zustandsmaschine `Gesture`, Laden, Export, Zurück, Stil); reines Rust, ohne Fenster testbar |
 | `images.rs` | Laden im Hintergrund-Thread (Dekodieren über `collage_core::decode_unoriented`, danach Vorschau ≤ `PREVIEW_MAX_EDGE` verkleinern und orientieren; Fehler sind `CoreError`); `ImageStore`: `ImageId → { path, preview: slint::Image, preview_size }`, `sources(&Collage)` liefert die `ImageSource`s für den Export |
 | `controller.rs` | Dünn: verbindet UI-Callbacks und `PlatformEvent`s mit `AppState`-Übergängen und stößt danach `refresh` an; `post()` bringt Aktionen aus anderen Threads in den UI-Thread (Controller per `thread_local` auffindbar) |
