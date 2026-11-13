@@ -27,7 +27,7 @@ Problem sie verlangt.
 |---|---|---|
 | 1 | **Ein Zustand** (`AppState`) im UI-Thread, nur der Controller verändert ihn | Keine Synchronisation, ein Ort für die Wahrheit |
 | 2 | **Einbahn-Datenfluss:** Event → Controller → Core → View-Models → UI | Nachvollziehbar, UI bleibt dumm |
-| 3 | Core rechnet in **normierten Koordinaten** (0–1) | Gleiche Logik für Bildschirm und Export, unabhängig von Pixelgrößen |
+| 3 | Core rechnet in **Collage-Einheiten** (1.0 = Collage-Breite) | Gleiche Logik für Bildschirm und Export, unabhängig von Pixelgrößen; Abstände sind in x und y gleich groß |
 | 4 | **Eine Zuschnitt-Funktion** für Vorschau *und* Export | Export sieht garantiert aus wie die Vorschau |
 | 5 | Layout als **Binärbaum aus Splits** | Jede Trennlinie = ein `ratio`; Vorlagen und Ziehen werden trivial |
 | 6 | Hintergrundarbeit nur in **kurzlebigen Threads** mit eigenen Daten | Kein Shared State, kein Async-Runtime nötig |
@@ -40,9 +40,9 @@ Reine Rust-Logik ohne UI- oder Plattformabhängigkeit. Module:
 
 | Modul | Inhalt |
 |---|---|
-| `geometry` | `Size`, `Vec2`, `Rect` (normiert, `f32`) |
-| `layout` | `LayoutNode`, `Split`, Zellrechtecke berechnen, Trennlinien finden und ziehen |
-| `templates` | Vorlagen je Bildanzahl |
+| `geometry` | `Size`, `Vec2`, `Rect` (Collage-Einheiten, `f32`) |
+| `layout` | `LayoutNode`, `Split`, Zellrechtecke berechnen, Trennlinien finden und ziehen (abstandsbewusst: gleiche `ratio`s ergeben gleich große Felder) |
+| `templates` | Vorlagen je Bildanzahl: ausgewogene Raster (Zeilen/Spalten) plus „großes Bild links/oben“ für 3–5 |
 | `collage` | `Collage` (Gesamtmodell) und alle Bearbeitungsoperationen |
 | `crop` | Zuschnitt: aus Bildgröße, Zellgröße und `CellTransform` das sichtbare Quellrechteck |
 | `render` | Export: Bilder dekodieren, zuschneiden, zusammensetzen, als JPEG/PNG kodieren |
@@ -52,25 +52,26 @@ Reine Rust-Logik ohne UI- oder Plattformabhängigkeit. Module:
 
 ```rust
 pub struct Collage {
-    pub aspect: AspectRatio,          // Square, Portrait4x5, Story9x16, Landscape16x9
-    pub style: Style,                 // spacing, padding, corner_radius, background: Rgba
-    pub layout: LayoutNode,
-    pub cells: Vec<Cell>,             // index = CellId
+    aspect: AspectRatio,              // Square, Portrait4x5, Story9x16, Landscape16x9
+    style: Style,                     // spacing, padding, corner_radius, background: Rgba
+    layout: LayoutNode,
+    cells: Vec<Cell>,                 // index = CellId; Felder privat, Zugriff über Methoden
 }
 
 pub enum LayoutNode {
     Cell(CellId),
-    Split { dir: SplitDir, ratio: f32, first: Box<LayoutNode>, second: Box<LayoutNode> },
+    Split(Box<Split>),                // Split { dir: SplitDir, ratio: f32, first, second }
 }
 
 pub struct Cell {
-    pub image: Option<ImageId>,       // None = leeres Feld (Platzhalter)
+    pub image: ImageMeta,             // jedes Feld hat genau ein Bild
     pub transform: CellTransform,
 }
 
 pub struct CellTransform {
-    pub zoom: f32,                    // ≥ 1.0; 1.0 = Bild füllt Feld genau ("cover")
-    pub offset: Vec2,                 // Verschiebung, so begrenzt, dass keine Lücke entsteht
+    zoom: f32,                        // 1.0..=MAX_ZOOM; 1.0 = Bild füllt Feld genau ("cover")
+    center: Vec2,                     // Mitte des sichtbaren Ausschnitts in Bildkoordinaten (0..1);
+                                      // bleibt bei Größenänderung des Felds sinnvoll
 }
 ```
 
@@ -81,19 +82,20 @@ außer im `render`-Modul, das Dateipfade bekommt.
 
 ```rust
 impl Collage {
-    pub fn new(images: &[ImageMeta], template: &Template) -> Self;
-    pub fn apply_template(&mut self, template: &Template);         // Bilder bleiben in Reihenfolge erhalten
-    pub fn cell_rects(&self) -> Vec<(CellId, Rect)>;              // inkl. spacing/padding
-    pub fn dividers(&self) -> Vec<Divider>;                       // Ziehflächen für die UI
-    pub fn drag_divider(&mut self, id: DividerId, delta: f32);    // klemmt auf Mindestgröße
-    pub fn pan(&mut self, cell: CellId, delta: Vec2);
-    pub fn zoom(&mut self, cell: CellId, factor: f32, focus: Vec2);
-    pub fn swap(&mut self, a: CellId, b: CellId);
+    pub fn new(images: &[ImageMeta], template: &Template) -> Result<Self, CoreError>;
+    pub fn apply_template(&mut self, template: &Template) -> Result<(), CoreError>; // Bilder bleiben erhalten
+    pub fn placements(&self) -> Vec<CellPlacement>;   // je Feld: Rechteck + Bildausschnitt (für UI und Export)
+    pub fn dividers(&self) -> Vec<Divider>;           // Ziehflächen für die UI
+    pub fn drag_divider(&mut self, id: DividerId, delta: Vec2) -> Result<(), CoreError>; // klemmt auf Mindestgröße
+    pub fn pan(&mut self, cell: CellId, delta: Vec2) -> Result<(), CoreError>;
+    pub fn zoom(&mut self, cell: CellId, factor: f32, focus: Vec2) -> Result<(), CoreError>;
+    pub fn swap(&mut self, a: CellId, b: CellId) -> Result<(), CoreError>;
     pub fn set_aspect(&mut self, aspect: AspectRatio);
-    pub fn cell_at(&self, point: Vec2) -> Option<CellId>;         // Hit-Test für Tauschen
+    pub fn set_style(&mut self, style: Style);       // klemmt auf gültige Werte
+    pub fn cell_at(&self, point: Vec2) -> Option<CellId>; // Hit-Test für Tauschen
 }
 
-pub fn source_crop(image: ImageMeta, cell: Size, t: CellTransform) -> Rect; // crop-Modul
+pub fn source_crop(image: Size, cell: Size, t: CellTransform) -> Rect; // crop-Modul
 pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -> Result<Vec<u8>, CoreError>;
 ```
 
@@ -155,16 +157,17 @@ Bildgröße + erzeugt Vorschaubild → Controller erstellt `Collage` mit erster 
 
 | Konstante | Wert | Grund |
 |---|---|---|
-| `MAX_IMAGES` | 9 | Vorlagen gibt es für 1–9; größer später per automatischem Raster |
+| `MAX_IMAGES` | 9 | Vorlagen gibt es für 1–9; mehr Bilder per Raster-Generator folgen in Meilenstein 8 |
 | `PREVIEW_MAX_EDGE` | 2048 px | Speicher in der UI begrenzen |
 | `EXPORT_LONG_EDGE` | 3000 px | Gute Qualität bei vertretbarer Dateigröße |
 | `DECODE_MAX_PIXELS` | 100 MP | Schutz vor manipulierten/riesigen Bildern |
-| `MIN_CELL_FRACTION` | 0.1 | Feld wird beim Ziehen nicht kleiner als 10 % der Split-Fläche |
+| `MIN_CELL_SIZE` | 0.05 | Feld wird beim Ziehen nicht schmaler als 5 % der Collage-Breite |
+| `MAX_SPACING` / `MAX_PADDING` / `MAX_CORNER_RADIUS` | 0.05 / 0.1 / 0.1 | Grenzen für den Stil, damit auch 9 Felder sichtbar bleiben |
 | `MAX_ZOOM` | 5.0 | Sinnvolle Obergrenze für Pinch-Zoom |
 | Export-Format | JPEG, Qualität 90 | Galerie- und Teilen-kompatibel |
 
 ## Bewusst nicht in v1
 
-Persistenz/Projekte speichern, Undo/Redo, Text/Sticker, Filter, freie Anordnung, mehr als 9 Bilder,
+Persistenz/Projekte speichern, Undo/Redo, Text/Sticker, Filter, freie Anordnung, mehr als 9 Bilder (Meilenstein 8),
 Übersetzungen (nur vorbereitet). Die Architektur verbaut nichts davon: Undo z. B. wäre ein Stapel von
 `Collage`-Klonen im Controller.

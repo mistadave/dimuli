@@ -37,7 +37,7 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 
 ### Typen und Daten
 - Newtypes für IDs (`struct CellId(u32)`, `struct ImageId(u32)`), keine nackten `usize` über Modulgrenzen.
-- Geometrie in einem einheitlichen Koordinatensystem: `collage-core` rechnet in **normierten Koordinaten (0.0–1.0)**
+- Geometrie in einem einheitlichen Koordinatensystem: `collage-core` rechnet in **Collage-Einheiten (1.0 = Collage-Breite)**; normierte Koordinaten (0.0–1.0) nur für Bildausschnitte (`crop`)
   relativ zur Collage; erst die UI bzw. der Export rechnet in Pixel um.
 - `f32` für Geometrie. Vergleiche in Tests mit Toleranz (`approx` bzw. `(a - b).abs() < EPS`), nie mit `==`.
 - Ungültige Zustände unmöglich machen: `enum` statt Bool-Flags, Konstruktoren mit Validierung statt öffentlicher Felder,
@@ -105,7 +105,7 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 
 ## 9. Dokumentation
 
-- `///`-Doc-Kommentare für alle `pub`-Elemente in `collage-core`: was es tut, Einheiten (normiert/px), Fehlerfälle.
+- `///`-Doc-Kommentare für alle `pub`-Elemente in `collage-core`: was es tut, Einheiten (Collage-Einheiten/normiert/px), Fehlerfälle.
 - Kommentare erklären das **Warum**, nicht das Was.
 - Architektur- oder Planänderungen in `docs/PLAN.md` nachführen; erledigte Meilensteine dort abhaken.
 - Ändern sich Befehle oder Setup, `CLAUDE.md` aktualisieren.

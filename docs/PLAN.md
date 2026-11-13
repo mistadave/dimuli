@@ -73,12 +73,15 @@ Was daraus folgt:
     - [x] `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_NDK_HOME` und `PATH` in `~/.zshrc` eintragen (manuell)
     - [x] Benutzer zur Gruppe `kvm` hinzufügen (`sudo usermod -aG kvm $USER`), danach `wsl --shutdown` (manuell)
     - [x] Emulator-Start prüfen: `emulator -accel-check`, `emulator -avd dimuli_api36`
-- [ ] 2. **Workspace und collage-core** mit Unit-Tests: Baum, Vorlagen, Geometrie, Ziehen der Trennlinien, Cover-Transformation, Tauschen.
+- [x] 2. **Workspace und collage-core** mit Unit-Tests: Baum, Vorlagen, Geometrie, Ziehen der Trennlinien, Cover-Transformation, Tauschen.
 - [ ] 3. **Desktop-UI mit Slint:** Bilder laden, Editor, Trennlinien, Verschieben/Zoomen, Tauschen, Einstellungen.
 - [ ] 4. **Export-Renderer** in collage-core mit Test (Pixelvergleich am Testbild); auf dem Desktop als Datei speichern.
 - [ ] 5. **Android-Schale:** Gradle-Projekt, Kotlin-Activity, JNI-Bridge, Photo Picker, MediaStore, Teilen; Lauf im Emulator.
 - [ ] 6. **Feinschliff:** Lifecycle (Pause/Resume, Zustand halten), Performance mit großen Bildern, Fehlermeldungen in der UI.
 - [ ] 7. **CLAUDE.md aktualisieren:** `cargo-apk`-Befehle durch den `cargo ndk` + Gradle-Ablauf ersetzen und die Struktur ergänzen.
+- [ ] 8. **Mehr als 9 Bilder:** Raster-Generator in `templates`, der für jede Bildanzahl ein Layout erzeugt;
+  `MAX_IMAGES` anheben (Ziel: kein festes Limit, die Felder werden kleiner). Speicher und Bedienbarkeit
+  mit vielen Bildern im Emulator prüfen.
 
 ## Wichtige Abhängigkeiten
 `slint` (+ `slint-build`), `image`, `tiny-skia`, `jni`, `android_logger`, `log`, `thiserror`; nur auf dem Desktop: `rfd`.
