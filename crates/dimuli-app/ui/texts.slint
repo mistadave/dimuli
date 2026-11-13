@@ -1,0 +1,23 @@
+// All user-visible texts of the .slint files (German). Wrapped in @tr() so they can be translated later.
+// Texts produced by Rust code live in src/texts.rs.
+export global Texts {
+    out property <string> app-name: "dimuli";
+    out property <string> start-hint: @tr("Wähle Bilder aus und ordne sie zu einer Collage an.");
+    out property <string> pick-images: @tr("Bilder wählen");
+    out property <string> back: @tr("Zurück");
+    out property <string> save: @tr("Speichern");
+    out property <string> share: @tr("Teilen");
+    out property <string> settings: @tr("Einstellungen");
+    out property <string> format: @tr("Format");
+    out property <string> spacing: @tr("Abstand");
+    out property <string> padding: @tr("Rand");
+    out property <string> corner-radius: @tr("Ecken");
+    out property <string> background: @tr("Hintergrund");
+    out property <string> dismiss: @tr("Schließen");
+    out property <string> editor-hint: @tr("Ziehen: Bild verschieben · Zwei Finger oder Mausrad: zoomen · Lange drücken: tauschen");
+    out property <string> back-title: @tr("Collage verwerfen?");
+    out property <string> back-question: @tr("Wenn du zurückgehst, geht die aktuelle Collage verloren.");
+    out property <string> back-confirm: @tr("Verwerfen");
+    out property <string> back-cancel: @tr("Abbrechen");
+    out property <[string]> aspect-labels: ["1:1", "4:5", "9:16", "16:9"];
+}

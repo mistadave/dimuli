@@ -1,0 +1,38 @@
+import { Theme } from "theme.slint";
+import { Backend } from "backend.slint";
+import { Screen } from "types.slint";
+import { StartScreen } from "start-screen.slint";
+import { EditorScreen } from "editor-screen.slint";
+import { MessageBanner } from "message-banner.slint";
+import { BusyOverlay } from "busy-overlay.slint";
+import { ConfirmDialog } from "confirm-dialog.slint";
+
+export { Backend, Screen, Theme }
+
+export component AppWindow inherits Window {
+    title: "dimuli";
+    background: Theme.background;
+    preferred-width: Theme.window-width;
+    preferred-height: Theme.window-height;
+    min-width: Theme.window-min-width;
+    min-height: Theme.window-min-height;
+
+    // Content is inset by the safe area (system bars, display cutout).
+    Rectangle {
+        x: Backend.inset-left;
+        y: Backend.inset-top;
+        width: parent.width - Backend.inset-left - Backend.inset-right;
+        height: parent.height - Backend.inset-top - Backend.inset-bottom;
+
+        if Backend.screen == Screen.start: StartScreen { }
+        if Backend.screen == Screen.editor: EditorScreen { }
+
+        MessageBanner {
+            x: Theme.spacing-s;
+            y: Theme.spacing-s;
+            width: parent.width - 2 * Theme.spacing-s;
+        }
+        BusyOverlay { }
+        ConfirmDialog { }
+    }
+}

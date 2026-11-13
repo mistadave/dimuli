@@ -1,0 +1,30 @@
+import { Theme } from "theme.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+
+export component MessageBanner inherits Rectangle {
+    visible: Backend.message-text != "";
+    background: Backend.message-is-error ? Theme.error : Theme.notice;
+    border-radius: Theme.radius-s;
+    height: self.visible ? row.preferred-height : 0px;
+
+    row := HorizontalLayout {
+        padding: Theme.spacing-s;
+        spacing: Theme.spacing-s;
+        alignment: stretch;
+        Text {
+            text: Backend.message-text;
+            wrap: word-wrap;
+            font-size: Theme.font-m;
+            vertical-alignment: center;
+            color: Backend.message-is-error ? Theme.on-error : Theme.on-notice;
+        }
+        AppButton {
+            text: "✕";
+            width: Theme.touch-target;
+            clicked => {
+                Backend.dismiss-message();
+            }
+        }
+    }
+}

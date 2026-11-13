@@ -1,0 +1,51 @@
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+
+export component ConfirmDialog inherits Rectangle {
+    visible: Backend.confirm-back-visible;
+    background: Theme.scrim;
+
+    TouchArea { }
+
+    Rectangle {
+        width: min(parent.width - 2 * Theme.spacing-l, Theme.dialog-max-width);
+        height: content.preferred-height;
+        background: Theme.surface;
+        border-radius: Theme.radius-m;
+
+        content := VerticalLayout {
+            padding: Theme.spacing-l;
+            spacing: Theme.spacing-m;
+            Text {
+                text: Texts.back-title;
+                font-size: Theme.font-l;
+                color: Theme.on-surface;
+            }
+            Text {
+                text: Texts.back-question;
+                wrap: word-wrap;
+                font-size: Theme.font-m;
+                color: Theme.on-surface-muted;
+            }
+            HorizontalLayout {
+                spacing: Theme.spacing-s;
+                alignment: end;
+                AppButton {
+                    text: Texts.back-cancel;
+                    clicked => {
+                        Backend.back-cancelled();
+                    }
+                }
+                AppButton {
+                    text: Texts.back-confirm;
+                    primary: true;
+                    clicked => {
+                        Backend.back-confirmed();
+                    }
+                }
+            }
+        }
+    }
+}

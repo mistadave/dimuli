@@ -1,0 +1,36 @@
+import { Theme } from "theme.slint";
+import { CellView } from "types.slint";
+
+export component CellTile inherits Rectangle {
+    in property <CellView> cell;
+
+    x: root.cell.x;
+    y: root.cell.y;
+    width: root.cell.width;
+    height: root.cell.height;
+
+    // Image has no border-radius of its own; a clipping rounded parent gives the same result.
+    Rectangle {
+        border-radius: root.cell.corner-radius;
+        clip: true;
+        Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.cell.image;
+            source-clip-x: root.cell.clip-x;
+            source-clip-y: root.cell.clip-y;
+            source-clip-width: root.cell.clip-width;
+            source-clip-height: root.cell.clip-height;
+            image-fit: fill;
+        }
+    }
+
+    // Highlight while swapping: orange = picked-up cell, blue = drop target.
+    Rectangle {
+        visible: root.cell.swap-source || root.cell.swap-target;
+        border-radius: root.cell.corner-radius;
+        border-width: Theme.swap-border;
+        border-color: root.cell.swap-source ? Theme.swap-source : Theme.swap-target;
+        background: (root.cell.swap-source ? Theme.swap-source : Theme.swap-target).with-alpha(0.25);
+    }
+}

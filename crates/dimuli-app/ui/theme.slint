@@ -1,0 +1,62 @@
+// Design tokens. All colors, sizes and spacings used by the UI come from here.
+export global Theme {
+    // Colors
+    out property <color> background: #101114;
+    out property <color> surface: #1c1e24;
+    out property <color> surface-raised: #272a32;
+    out property <color> primary: #7aa7ff;
+    out property <color> on-primary: #0b1020;
+    out property <color> on-surface: #f1f2f5;
+    out property <color> on-surface-muted: #a3a7b3;
+    out property <color> error: #ffb4ab;
+    out property <color> on-error: #3b0a07;
+    out property <color> notice: #bfd4ff;
+    out property <color> on-notice: #0b1020;
+    out property <color> scrim: #000000b0;
+    out property <color> handle: #ffffffe6;
+    out property <color> handle-outline: #00000066;
+    out property <color> swap-source: #ffb74d;
+    out property <color> swap-target: #7aa7ff;
+    out property <color> disabled: #5c606b;
+
+    // Sizes (touch targets are at least 48px, see docs/CODING_GUIDELINES.md)
+    out property <length> touch-target: 48px;
+    out property <length> template-thumb: 56px;
+    out property <length> swatch: 40px;
+    out property <length> handle-length: 32px;
+    out property <length> handle-thickness: 6px;
+    out property <length> slider-track: 6px;
+    out property <length> slider-thumb: 24px;
+    out property <length> swap-border: 3px;
+
+    out property <length> border-thin: 1px;
+    out property <length> border-medium: 2px;
+    out property <length> border-thick: 3px;
+    out property <length> label-width: 80px;
+    out property <length> dialog-max-width: 360px;
+    out property <length> about-height: 120px;
+    out property <length> canvas-min-height: 120px;
+    out property <length> window-width: 420px;
+    out property <length> window-height: 860px;
+    out property <length> window-min-width: 320px;
+    out property <length> window-min-height: 480px;
+    out property <length> thumb-cell-radius: 2px;
+
+    // Spacing and radii
+    out property <length> spacing-xs: 4px;
+    out property <length> spacing-s: 8px;
+    out property <length> spacing-m: 16px;
+    out property <length> spacing-l: 24px;
+    out property <length> radius-s: 8px;
+    out property <length> radius-m: 16px;
+
+    // Typography
+    out property <length> font-s: 13px;
+    out property <length> font-m: 16px;
+    out property <length> font-l: 22px;
+    out property <length> font-xl: 34px;
+
+    // Timing
+    out property <duration> long-press: 500ms;
+    out property <duration> pulse: 800ms;
+}

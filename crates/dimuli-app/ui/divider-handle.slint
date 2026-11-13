@@ -1,0 +1,16 @@
+import { Theme } from "theme.slint";
+import { DividerView } from "types.slint";
+
+// Visual only: Rust hit-tests the handles (see AppState::press), so this has no input handling.
+export component DividerHandle inherits Rectangle {
+    in property <DividerView> divider;
+
+    x: root.divider.center-x - self.width / 2;
+    y: root.divider.center-y - self.height / 2;
+    width: root.divider.vertical ? Theme.handle-thickness : Theme.handle-length;
+    height: root.divider.vertical ? Theme.handle-length : Theme.handle-thickness;
+    border-radius: Theme.handle-thickness / 2;
+    background: Theme.handle;
+    border-width: Theme.border-thin;
+    border-color: Theme.handle-outline;
+}

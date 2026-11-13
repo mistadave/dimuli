@@ -1,0 +1,38 @@
+import { Theme } from "theme.slint";
+import { Backend } from "backend.slint";
+
+// Blocks input while something takes long (loading, later export).
+export component BusyOverlay inherits Rectangle {
+    visible: Backend.busy;
+    background: Theme.scrim;
+
+    // Swallows all input underneath.
+    TouchArea { }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: Theme.spacing-m;
+        pulse := Rectangle {
+            property <float> phase: 0.3;
+            width: Theme.touch-target;
+            height: Theme.touch-target;
+            border-radius: self.width / 2;
+            background: Theme.primary;
+            opacity: self.phase;
+            animate phase {
+                duration: Theme.pulse;
+                iteration-count: -1;
+                direction: alternate;
+            }
+            init => {
+                self.phase = 1.0;
+            }
+        }
+        Text {
+            text: Backend.busy-text;
+            font-size: Theme.font-m;
+            color: Theme.on-surface;
+            horizontal-alignment: center;
+        }
+    }
+}

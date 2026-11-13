@@ -1,0 +1,39 @@
+// Data types shared between Rust and the UI. Lengths are in logical pixels.
+export enum Screen { start, editor }
+
+export struct CellView {
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+    image: image,
+    // Visible part of the image in source pixels (for source-clip-*).
+    clip-x: int,
+    clip-y: int,
+    clip-width: int,
+    clip-height: int,
+    corner-radius: length,
+    swap-source: bool,
+    swap-target: bool,
+}
+
+export struct DividerView {
+    id: int,
+    // Center of the divider's handle in canvas pixels.
+    center-x: length,
+    center-y: length,
+    // true: vertical line (dragged left/right), false: horizontal line (dragged up/down).
+    vertical: bool,
+}
+
+// A cell of a template preview in unit coordinates (0..1).
+export struct TemplateRect {
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+}
+
+export struct TemplateView {
+    rects: [TemplateRect],
+}

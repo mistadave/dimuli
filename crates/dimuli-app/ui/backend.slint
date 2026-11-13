@@ -1,0 +1,64 @@
+import { Screen, CellView, DividerView, TemplateView } from "types.slint";
+
+// The only interface between the UI and Rust: properties flow in, callbacks flow out.
+export global Backend {
+    // --- state from Rust ---
+    in property <Screen> screen: Screen.start;
+    in property <bool> busy;
+    in property <string> busy-text;
+    in property <string> message-text;
+    in property <bool> message-is-error;
+    in property <bool> confirm-back-visible;
+
+    // Safe-area insets (0 on desktop).
+    in property <length> inset-top;
+    in property <length> inset-bottom;
+    in property <length> inset-left;
+    in property <length> inset-right;
+
+    in property <[CellView]> cells;
+    in property <[DividerView]> dividers;
+    in property <[TemplateView]> templates;
+    in property <int> active-template: -1;
+    // Width / height of the collage.
+    in property <float> canvas-aspect: 1.0;
+    in property <color> collage-background: white;
+
+    in property <int> aspect-index: -1;
+    in property <float> spacing;
+    in property <float> padding;
+    in property <float> corner-radius;
+    in property <float> max-spacing: 1.0;
+    in property <float> max-padding: 1.0;
+    in property <float> max-corner-radius: 1.0;
+    in property <[color]> background-presets;
+    in property <int> background-index: -1;
+
+    // --- actions to Rust ---
+    callback pick-images();
+    callback back-requested();
+    callback back-confirmed();
+    callback back-cancelled();
+    callback save-requested();
+    callback share-requested();
+    callback dismiss-message();
+
+    callback canvas-resized(length, length);
+    callback canvas-pressed(length, length);
+    callback canvas-moved(length, length);
+    callback canvas-released(length, length);
+    callback canvas-cancelled();
+    callback canvas-long-pressed();
+    // vertical scroll delta, pointer x, pointer y
+    callback canvas-scrolled(length, length, length);
+    callback canvas-pinch-started();
+    // relative scale since the last call, center x, center y
+    callback canvas-pinched(float, length, length);
+
+    callback template-selected(int);
+    callback aspect-selected(int);
+    callback spacing-changed(float);
+    callback padding-changed(float);
+    callback corner-radius-changed(float);
+    callback background-selected(int);
+}

@@ -1,0 +1,83 @@
+import { Theme } from "theme.slint";
+import { Backend } from "backend.slint";
+import { CellTile } from "cell-tile.slint";
+import { DividerHandle } from "divider-handle.slint";
+
+// Shows the collage fitted into the available area. Gestures are reported as raw pointer data in canvas pixels;
+// Rust decides what they mean (pan, zoom, swap).
+export component CollageCanvas inherits Rectangle {
+    canvas := Rectangle {
+        width: max(0px, min(parent.width, parent.height * Backend.canvas-aspect));
+        height: Backend.canvas-aspect > 0 ? self.width / Backend.canvas-aspect : 0px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Backend.collage-background;
+
+        changed width => {
+            Backend.canvas-resized(self.width, self.height);
+        }
+        changed height => {
+            Backend.canvas-resized(self.width, self.height);
+        }
+        init => {
+            Backend.canvas-resized(self.width, self.height);
+        }
+
+        for cell in Backend.cells: CellTile {
+            cell: cell;
+        }
+
+        pinch := ScaleRotateGestureHandler {
+            property <float> last-scale: 1.0;
+            started => {
+                self.last-scale = 1.0;
+                Backend.canvas-pinch-started();
+            }
+            updated => {
+                if (self.last-scale > 0) {
+                    Backend.canvas-pinched(self.scale / self.last-scale, self.center.x, self.center.y);
+                }
+                self.last-scale = self.scale;
+            }
+
+            touch := TouchArea {
+                pointer-event(event) => {
+                    if (event.button == PointerEventButton.left) {
+                        if (event.kind == PointerEventKind.down) {
+                            long-press.running = true;
+                            Backend.canvas-pressed(self.mouse-x, self.mouse-y);
+                        } else if (event.kind == PointerEventKind.up) {
+                            long-press.running = false;
+                            Backend.canvas-released(self.mouse-x, self.mouse-y);
+                        }
+                    }
+                    if (event.kind == PointerEventKind.cancel) {
+                        long-press.running = false;
+                        Backend.canvas-cancelled();
+                    }
+                }
+                moved => {
+                    Backend.canvas-moved(self.mouse-x, self.mouse-y);
+                }
+                scroll-event(event) => {
+                    Backend.canvas-scrolled(event.delta-y, self.mouse-x, self.mouse-y);
+                    accept
+                }
+            }
+        }
+
+        for divider in Backend.dividers: DividerHandle {
+            divider: divider;
+        }
+
+        // One-shot: armed on press, disarmed on release/cancel or when it fires.
+        long-press := Timer {
+            interval: Theme.long-press;
+            running: false;
+            triggered => {
+                self.running = false;
+                Backend.canvas-long-pressed();
+            }
+        }
+    }
+}

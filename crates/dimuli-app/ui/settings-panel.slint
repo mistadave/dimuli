@@ -1,0 +1,102 @@
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+import { ValueSlider } from "value-slider.slint";
+
+component SliderRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <float> value;
+    in property <float> maximum;
+    callback changed(float);
+
+    spacing: Theme.spacing-m;
+    Text {
+        width: Theme.label-width;
+        text: root.label;
+        font-size: Theme.font-m;
+        color: Theme.on-surface;
+        vertical-alignment: center;
+    }
+    ValueSlider {
+        value: root.value;
+        maximum: root.maximum;
+        changed(v) => {
+            root.changed(v);
+        }
+    }
+}
+
+export component SettingsPanel inherits Rectangle {
+    background: Theme.surface;
+
+    VerticalLayout {
+        padding: Theme.spacing-m;
+        spacing: Theme.spacing-s;
+
+        Text {
+            text: Texts.format;
+            font-size: Theme.font-s;
+            color: Theme.on-surface-muted;
+        }
+        HorizontalLayout {
+            spacing: Theme.spacing-s;
+            for label[index] in Texts.aspect-labels: AppButton {
+                text: label;
+                primary: index == Backend.aspect-index;
+                clicked => {
+                    Backend.aspect-selected(index);
+                }
+            }
+        }
+        SliderRow {
+            label: Texts.spacing;
+            value: Backend.spacing;
+            maximum: Backend.max-spacing;
+            changed(v) => {
+                Backend.spacing-changed(v);
+            }
+        }
+        SliderRow {
+            label: Texts.padding;
+            value: Backend.padding;
+            maximum: Backend.max-padding;
+            changed(v) => {
+                Backend.padding-changed(v);
+            }
+        }
+        SliderRow {
+            label: Texts.corner-radius;
+            value: Backend.corner-radius;
+            maximum: Backend.max-corner-radius;
+            changed(v) => {
+                Backend.corner-radius-changed(v);
+            }
+        }
+        Text {
+            text: Texts.background;
+            font-size: Theme.font-s;
+            color: Theme.on-surface-muted;
+        }
+        HorizontalLayout {
+            spacing: Theme.spacing-s;
+            for color[index] in Backend.background-presets: Rectangle {
+                width: Theme.touch-target;
+                height: Theme.touch-target;
+                Rectangle {
+                    width: Theme.swatch;
+                    height: Theme.swatch;
+                    border-radius: self.width / 2;
+                    background: color;
+                    border-width: index == Backend.background-index ? Theme.border-thick : Theme.border-thin;
+                    border-color: index == Backend.background-index ? Theme.primary : Theme.on-surface-muted;
+                }
+                TouchArea {
+                    clicked => {
+                        Backend.background-selected(index);
+                    }
+                }
+            }
+        }
+    }
+}

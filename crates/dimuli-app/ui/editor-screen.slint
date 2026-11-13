@@ -1,0 +1,35 @@
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { AppButton } from "app-button.slint";
+import { TopBar } from "top-bar.slint";
+import { CollageCanvas } from "collage-canvas.slint";
+import { TemplateBar } from "template-bar.slint";
+import { SettingsPanel } from "settings-panel.slint";
+
+export component EditorScreen inherits Rectangle {
+    // Presentation-only state: whether the settings panel is expanded.
+    property <bool> settings-open: false;
+
+    VerticalLayout {
+        TopBar { }
+        CollageCanvas {
+            vertical-stretch: 1;
+            min-height: Theme.canvas-min-height;
+        }
+        Text {
+            text: Texts.editor-hint;
+            wrap: word-wrap;
+            font-size: Theme.font-s;
+            color: Theme.on-surface-muted;
+            horizontal-alignment: center;
+        }
+        TemplateBar { }
+        AppButton {
+            text: Texts.settings + (root.settings-open ? " ▾" : " ▴");
+            clicked => {
+                root.settings-open = !root.settings-open;
+            }
+        }
+        if root.settings-open: SettingsPanel { }
+    }
+}

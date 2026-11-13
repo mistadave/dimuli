@@ -1,0 +1,46 @@
+import { Theme } from "theme.slint";
+import { Backend } from "backend.slint";
+
+export component TemplateBar inherits Rectangle {
+    height: Theme.template-thumb + 2 * Theme.spacing-s;
+    background: Theme.surface;
+
+    Flickable {
+        content-width: row.preferred-width;
+        row := HorizontalLayout {
+            padding: Theme.spacing-s;
+            spacing: Theme.spacing-s;
+            alignment: center;
+            for template[index] in Backend.templates: Rectangle {
+                width: Theme.template-thumb;
+                height: Theme.template-thumb;
+                border-radius: Theme.radius-s;
+                background: Theme.surface-raised;
+                border-width: Theme.border-medium;
+                border-color: index == Backend.active-template ? Theme.primary : transparent;
+
+                // Cells are drawn on an inner square so previews of all templates look alike.
+                preview := Rectangle {
+                    x: Theme.spacing-s;
+                    y: Theme.spacing-s;
+                    width: parent.width - 2 * Theme.spacing-s;
+                    height: parent.height - 2 * Theme.spacing-s;
+                    for cell in template.rects: Rectangle {
+                        x: cell.x * preview.width;
+                        y: cell.y * preview.height;
+                        width: cell.width * preview.width;
+                        height: cell.height * preview.height;
+                        border-radius: Theme.thumb-cell-radius;
+                        background: index == Backend.active-template ? Theme.primary : Theme.on-surface-muted;
+                    }
+                }
+
+                TouchArea {
+                    clicked => {
+                        Backend.template-selected(index);
+                    }
+                }
+            }
+        }
+    }
+}

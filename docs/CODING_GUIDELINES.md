@@ -17,7 +17,7 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 |---|---|---|
 | `crates/collage-core` | Layout-Baum, Vorlagen, Geometrie, Transformationen, Export-Renderer | nur reine Rust-Crates (kein Slint, kein JNI) |
 | `crates/dimuli-app/src` | App-Zustand, Verbindung Core ↔ UI | `collage-core`, `slint` |
-| `crates/dimuli-app/src/platform` | Bildauswahl, Speichern, Teilen, Insets, Back | Plattform-APIs (JNI, `rfd`) |
+| `crates/dimuli-app/src/platform` | Bildauswahl, Speichern, Teilen, Insets, Back | Plattform-APIs (JNI; Desktop: Kommandozeilen-Argumente, Dateisystem) |
 | `crates/dimuli-app/ui` | `.slint`-Dateien: nur Darstellung und Gesten-Events | – |
 | `android/` | Kotlin-Activity, Manifest, Gradle | – |
 
@@ -53,6 +53,9 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 
 ### unsafe und FFI
 - `unsafe` nur in `platform/android.rs` (JNI). Jeder `unsafe`-Block bekommt einen `// SAFETY:`-Kommentar.
+- **Einzige Ausnahme für `#[allow]` auf Lints:** das Modul `ui` in `dimuli-app/src/lib.rs`, das den von
+  `slint::include_modules!()` generierten Code einbindet. Generierter Code ist nicht änderbar; handgeschriebener Code
+  bleibt voll gelintet. Das `allow` enthält nur die Lints, die der generierte Code wirklich verletzt.
 - Native JNI-Einstiegspunkte (`extern "system" fn Java_...`) fangen Panics mit `std::panic::catch_unwind` ab,
   bevor sie die Grenze erreichen.
 - Aufrufe aus Kotlin-Callbacks nie direkt auf UI-Objekte zugreifen lassen: immer über

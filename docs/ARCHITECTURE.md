@@ -105,11 +105,13 @@ pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -
 |---|---|
 | `lib.rs` | `run(platform)`: UI erstellen, Controller verdrahten; `android_main` ruft `run` mit `AndroidPlatform` |
 | `main.rs` | Desktop-Einstieg: `run(DesktopPlatform)` |
-| `state.rs` | `AppState { screen, collage: Option<Collage>, images: ImageStore, busy: bool }` |
-| `images.rs` | `ImageStore`: `ImageId → { path, meta, preview: slint::Image }`; lädt Vorschaubilder im Hintergrund |
-| `controller.rs` | Einziger Ort, der `AppState` ändert: UI-Callbacks und `PlatformEvent`s behandeln, View-Models aktualisieren |
-| `view.rs` | `AppState` → Slint-Structs (`CellView`, `DividerView`) umwandeln, inkl. Pixelumrechnung |
-| `platform/mod.rs` | `trait Platform`, `enum PlatformEvent` |
+| `state.rs` | `AppState { screen, collage, images, busy, message, templates, canvas, insets, confirm_back, gesture }` samt allen Zustandsübergängen (Gesten-Zustandsmaschine `Gesture`, Laden, Zurück, Stil); reines Rust, ohne Fenster testbar |
+| `images.rs` | Laden im Hintergrund-Thread (Limits, EXIF-Orientierung, Vorschau ≤ `PREVIEW_MAX_EDGE`); `ImageStore`: `ImageId → { preview: slint::Image, preview_size }` (der Originalpfad kommt mit dem Export, Meilenstein 4) |
+| `controller.rs` | Dünn: verbindet UI-Callbacks und `PlatformEvent`s mit `AppState`-Übergängen und stößt danach `refresh` an; `post()` bringt Aktionen aus anderen Threads in den UI-Thread (Controller per `thread_local` auffindbar) |
+| `view.rs` | Reine Umrechnung Collage-Einheiten ↔ Pixel (1.0 = Canvas-Breite in px), `source-clip-*`, Trennlinien-Touchflächen (≥ 48 px), Wheel-Zoom; `Models::snapshot/apply` schreibt `CellView`/`DividerView`/`TemplateView` in die Slint-Models (nur geänderte Zeilen) |
+| `texts.rs` | Vom Rust-Code erzeugte deutsche Meldungen (Texte der `.slint`-Dateien: `ui/texts.slint`) |
+| `ui/` | `app.slint` (Einstieg), `backend.slint` (`global Backend`: alle Properties/Callbacks zwischen UI und Rust), `theme.slint`, `texts.slint`, `types.slint` (Structs), je eine Komponente pro Datei |
+| `platform/mod.rs` | `trait Platform`, `enum PlatformEvent`, `post_event()` |
 | `platform/desktop.rs`, `platform/android.rs` | Implementierungen |
 
 ### Plattform-Schnittstelle
@@ -122,7 +124,8 @@ pub trait Platform {
 }
 
 pub enum PlatformEvent {
-    ImagesPicked(Vec<PathBuf>),                        // Kopien im App-Cache
+    ImagesPicked(Vec<PathBuf>),                        // Kopien im App-Cache; leer = abgebrochen
+    PickFailed(String),                                // Meldung für den Benutzer (z. B. Desktop ohne Argumente)
     Saved(Result<(), String>),
     Shared(Result<(), String>),
     InsetsChanged { top: f32, bottom: f32, left: f32, right: f32 },
@@ -130,8 +133,25 @@ pub enum PlatformEvent {
 }
 ```
 
+Desktop (`DesktopPlatform`): `pick_images` liefert die beim Start übergebenen Pfade (`cargo run -p dimuli-app -- a.jpg b.jpg`,
+höchstens `max`; ohne Argumente `PickFailed`). `save_to_gallery` und `share` melden bis Meilenstein 4 „nicht verfügbar“
+(danach schreibt `save_to_gallery` eine Datei ins Arbeitsverzeichnis).
+
+Die Plattform liefert Ergebnisse mit `platform::post_event(event)` (beliebiger Thread); das nutzt
+`invoke_from_event_loop` und findet den Controller über ein `thread_local`.
+
 Alle Methoden kehren sofort zurück. Ergebnisse kommen asynchron als `PlatformEvent` über
 `slint::invoke_from_event_loop` zum Controller.
+
+### Gesten
+
+Die Canvas-`TouchArea` meldet nur rohe Zeigerdaten in Canvas-Pixeln (`canvas-pressed/moved/released/long-pressed/scrolled/pinched`);
+Rust entscheidet per `Gesture` (`Idle → Pressed → Panning | Swapping`, `Pinching`) und `cell_at`, was sie bedeuten.
+Long-Press (500 ms) ist ein `Timer` in Slint; Bewegung über 10 px vor dem Ablauf macht aus dem Druck ein Verschieben.
+Mausrad → `zoom` unter dem Zeiger, Pinch (`ScaleRotateGestureHandler`) → `zoom` um den Gestenmittelpunkt.
+Trennlinien haben keine eigene `TouchArea`: Jede hat genau einen Griff mit quadratischer Zielfläche (Kantenlänge `Theme.touch-target`, 48 px,
+zentriert auf dem Gap). Bei `press` prüft Rust zuerst die Griffe (bei Überlappung gewinnt der nächste Mittelpunkt) und startet
+`Gesture::DraggingDivider`, sonst läuft die Zell-Logik. Die Griffe in `.slint` sind reine Darstellung.
 
 ### Bildschirme
 

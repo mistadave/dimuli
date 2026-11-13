@@ -1,0 +1,39 @@
+import { AboutSlint } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+
+export component StartScreen inherits Rectangle {
+    VerticalLayout {
+        padding: Theme.spacing-l;
+        spacing: Theme.spacing-l;
+        alignment: center;
+
+        Text {
+            text: Texts.app-name;
+            font-size: Theme.font-xl;
+            font-weight: 700;
+            color: Theme.on-surface;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: Texts.start-hint;
+            wrap: word-wrap;
+            font-size: Theme.font-m;
+            color: Theme.on-surface-muted;
+            horizontal-alignment: center;
+        }
+        AppButton {
+            text: Texts.pick-images;
+            primary: true;
+            clicked => {
+                Backend.pick-images();
+            }
+        }
+        // Attribution required by the Slint Royalty-free License.
+        AboutSlint {
+            preferred-height: Theme.about-height;
+        }
+    }
+}

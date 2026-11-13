@@ -1,0 +1,28 @@
+[package]
+name = "dimuli-app"
+description = "dimuli app: Slint UI, state and platform glue around collage-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "dimuli"
+path = "src/main.rs"
+
+[dependencies]
+collage-core = { path = "../collage-core" }
+slint.workspace = true
+image.workspace = true
+log.workspace = true
+env_logger.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
+
+[lints]
+workspace = true

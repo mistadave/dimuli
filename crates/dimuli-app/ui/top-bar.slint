@@ -1,0 +1,34 @@
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+
+export component TopBar inherits Rectangle {
+    height: Theme.touch-target + 2 * Theme.spacing-s;
+    background: Theme.surface;
+
+    HorizontalLayout {
+        padding: Theme.spacing-s;
+        spacing: Theme.spacing-s;
+        AppButton {
+            text: "‹ " + Texts.back;
+            clicked => {
+                Backend.back-requested();
+            }
+        }
+        Rectangle { }
+        AppButton {
+            text: Texts.save;
+            clicked => {
+                Backend.save-requested();
+            }
+        }
+        AppButton {
+            text: Texts.share;
+            primary: true;
+            clicked => {
+                Backend.share-requested();
+            }
+        }
+    }
+}
