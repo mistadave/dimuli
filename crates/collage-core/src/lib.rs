@@ -1,0 +1,23 @@
+//! Platform-independent collage logic for dimuli.
+//!
+//! All lengths are in **collage units**: `1.0` equals the width of the collage. The height follows from the
+//! [`AspectRatio`]. Conversion to pixels happens only in the UI and in the export renderer.
+
+#![warn(missing_docs)]
+
+pub mod collage;
+pub mod crop;
+pub mod error;
+pub mod geometry;
+pub mod layout;
+pub mod templates;
+
+pub use collage::{AspectRatio, Cell, CellPlacement, Collage, ImageId, ImageMeta, Rgba, Style};
+pub use crop::{CellTransform, MAX_ZOOM, source_crop};
+pub use error::CoreError;
+pub use geometry::{Rect, Size, Vec2};
+pub use layout::{CellId, Divider, DividerId, LayoutNode, MIN_CELL_SIZE, SplitDir};
+pub use templates::{Template, templates_for};
+
+/// Maximum number of images in one collage (v1 limit, see `docs/ARCHITECTURE.md`).
+pub const MAX_IMAGES: usize = 9;

@@ -1,0 +1,13 @@
+[package]
+name = "collage-core"
+description = "Platform-independent collage logic for dimuli: layouts, geometry, cropping."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true
