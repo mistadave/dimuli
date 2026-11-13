@@ -11,8 +11,10 @@ und als ein Bild exportiert.
 - **Android:** minSdk 36 (Android 16), targetSdk 37 (Android 17), NDK r30; ABIs `arm64-v8a` und `x86_64` (Emulator)
 - **Entwicklung:** komplett in WSL2; Emulator-AVDs `dimuli_api36` und `dimuli_api37` (Start: `emulator -avd dimuli_api36`)
 
-**Plan und Fortschritt:** [`docs/PLAN.md`](docs/PLAN.md). Dort stehen Architektur und Meilensteine;
+**Plan und Fortschritt:** [`docs/PLAN.md`](docs/PLAN.md). Dort stehen Meilensteine und Android-Setup;
 erledigte Meilensteine werden dort abgehakt.
+
+**Architektur:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Module, Datenmodell, Datenfluss, Grenzen.
 
 **Coding Guidelines:** [`docs/CODING_GUIDELINES.md`](docs/CODING_GUIDELINES.md). Vor dem Schreiben von Code lesen
 und einhalten; die Checkliste am Ende vor jedem Abschluss abarbeiten.

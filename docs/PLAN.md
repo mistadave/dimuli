@@ -27,33 +27,7 @@ dimuli/
 └── android/                   # Gradle-Projekt: Manifest, Kotlin-Activity, FileProvider
 ```
 
-### collage-core
-- **Layout als Binärbaum:** `Node = Split { dir: H|V, ratio: f32, a, b } | Cell(CellId)`.
-  Eine Trennlinie entspricht einem `Split`. Beim Ziehen ändert sich `ratio`; eine Mindestgröße pro Feld wird eingehalten.
-- **Vorlagen:** `templates(count) -> Vec<Template>`, mehrere Varianten je Anzahl 1–9 (darüber ein automatisches Raster).
-- **Geometrie:** `compute_cells(tree, canvas_size, spacing, padding) -> Vec<(CellId, Rect)>` und `compute_dividers(...)`
-  für die Ziehflächen.
-- **Bild im Feld:** `CellContent { image: ImageId, scale: f32, offset: Vec2 }`. Das Bild füllt das Feld immer
-  vollständig („cover“). Zoom und Verschieben werden so begrenzt, dass keine Lücken entstehen.
-- **Aktionen:** Bilder tauschen, Vorlage wechseln (Bilder bleiben erhalten), Seitenverhältnis ändern.
-- **Export-Renderer:** Bilder mit `image` dekodieren (inkl. EXIF-Orientierung) und mit `tiny-skia` zusammensetzen
-  (Clip-Pfad mit Eckenradius, Hintergrundfarbe). Ausgabe als JPEG/PNG-Bytes mit konfigurierbarer langer Kante
-  (Standard 3000 px).
-- **Speicher:** Für die UI dient eine verkleinerte Vorschau (max. 2048 px). Der Export dekodiert die Bilder
-  nacheinander in voller Auflösung.
-
-### dimuli-app
-- **Slint-UI:** Startansicht (Bilder wählen) → Editor mit Canvas, Vorlagenleiste und Einstellungen
-  (Abstand, Radius, Farbe, Format) → Export (Speichern/Teilen).
-- Rust berechnet die Feld- und Trennlinien-Rechtecke und gibt sie als Slint-Models (`[CellData]`, `[DividerData]`) an die UI.
-  Slint zeichnet nur und meldet Gesten zurück.
-- **Gesten:** `TouchArea` zum Verschieben und Ziehen der Trennlinien. Getauscht wird per Long-Press und Ziehen auf ein
-  anderes Feld (Hit-Test in Rust). Für Pinch-Zoom kommt die Pinch-Geste der aktuellen Slint-Version zum Einsatz,
-  falls vorhanden, sonst ein Zoom-Slider.
-- **Plattform-Trait:** `pick_images()`, `save_to_gallery(bytes)` und `share(bytes)`, jeweils mit einem
-  asynchronen Ergebnis über `slint::invoke_from_event_loop`.
-  - Desktop: `rfd` als Dateidialog, Speichern in eine Datei, Teilen als No-op.
-  - Android: JNI-Aufrufe in die Kotlin-Activity (siehe unten).
+Details zu Modulen, Datenmodell, Datenfluss und Grenzen: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ### Android-Integration
 `cargo-apk` reicht hier nicht: Bildauswahl und Teilen brauchen `onActivityResult` bzw. Intents, und
