@@ -19,6 +19,8 @@ collage-core = { path = "../collage-core" }
 slint.workspace = true
 image.workspace = true
 log.workspace = true
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
 env_logger.workspace = true
 
 [build-dependencies]

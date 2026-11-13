@@ -41,7 +41,9 @@ adb logcat -s dimuli                                   # App-Logs
 - UI-Änderungen zuerst per `cargo run -p dimuli-app -- …` auf dem Desktop prüfen; Android-Build nur bei plattformspezifischen Änderungen.
 - Kein `unwrap()`/`expect()` in Produktionscode: ein Panic lässt die App abstürzen.
 - Neue Crates nur nach Rückfrage hinzufügen und auf Android-Kompatibilität prüfen.
-- Abgegrenzte Programmieraufgaben können an den Subagent `rust-coder` (`.claude/agents/rust-coder.md`) gehen.
+- Code wird immer vom Subagent `rust-coder` (`.claude/agents/rust-coder.md`) geschrieben, auch einfache Anpassungen.
+  Der Hauptagent liest, plant, koordiniert und prüft die Ergebnisse. Sehr komplexe Aufgaben vorher in kleinere,
+  klar abgegrenzte Subtasks aufteilen und einzeln an `rust-coder` geben.
 - Nach Abschluss eines Meilensteins bzw. vor einem Commit den Subagent `code-reviewer`
   (`.claude/agents/code-reviewer.md`) ausführen und kritische Befunde beheben.
 - Nicht ohne ausdrückliche Aufforderung committen oder pushen.

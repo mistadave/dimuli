@@ -18,18 +18,24 @@ impl DesktopPlatform {
     }
 }
 
-/// The event answering a pick request.
-fn pick_event(paths: &[PathBuf], max: usize) -> PlatformEvent {
+/// The event answering a pick request: all paths, even more than allowed (the controller cuts and reports).
+fn pick_event(paths: &[PathBuf]) -> PlatformEvent {
     if paths.is_empty() {
         PlatformEvent::PickFailed(texts::NO_IMAGE_ARGUMENTS.to_owned())
     } else {
-        PlatformEvent::ImagesPicked(paths.iter().take(max).cloned().collect())
+        PlatformEvent::ImagesPicked(paths.to_vec())
     }
 }
 
 impl Platform for DesktopPlatform {
-    fn pick_images(&self, max: usize) {
-        post_event(pick_event(&self.paths, max));
+    fn pick_images(&self, _max: usize) {
+        post_event(pick_event(&self.paths));
+    }
+
+    fn close_app(&self) {
+        if let Err(error) = slint::quit_event_loop() {
+            log::error!("cannot quit the event loop: {error}");
+        }
     }
 
     // Exporting arrives with milestone 4.
@@ -57,29 +63,19 @@ mod tests {
     }
 
     #[test]
-    fn pick_returns_given_paths() {
+    fn pick_returns_all_given_paths() {
+        assert_eq!(pick_event(&paths(2)), PlatformEvent::ImagesPicked(paths(2)));
+        // More than allowed: cutting and telling the user is the controller's job.
         assert_eq!(
-            pick_event(&paths(2), 9),
-            PlatformEvent::ImagesPicked(paths(2))
-        );
-    }
-
-    #[test]
-    fn pick_returns_at_most_max_paths() {
-        assert_eq!(
-            pick_event(&paths(12), 9),
-            PlatformEvent::ImagesPicked(paths(9))
-        );
-        assert_eq!(
-            pick_event(&paths(3), 1),
-            PlatformEvent::ImagesPicked(paths(1))
+            pick_event(&paths(12)),
+            PlatformEvent::ImagesPicked(paths(12))
         );
     }
 
     #[test]
     fn pick_without_arguments_explains_what_to_do() {
         assert!(matches!(
-            pick_event(&[], 9),
+            pick_event(&[]),
             PlatformEvent::PickFailed(message) if message.contains("cargo run")
         ));
     }

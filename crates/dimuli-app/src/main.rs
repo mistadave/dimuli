@@ -7,6 +7,8 @@ use std::rc::Rc;
 use dimuli_app::platform::DesktopPlatform;
 
 fn main() -> ExitCode {
+    // The Android build uses the library entry point; the bin only needs to compile there.
+    #[cfg(not(target_os = "android"))]
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let paths: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
     match dimuli_app::run(Rc::new(DesktopPlatform::new(paths))) {

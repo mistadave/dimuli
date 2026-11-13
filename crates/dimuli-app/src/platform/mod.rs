@@ -11,13 +11,16 @@ pub use desktop::DesktopPlatform;
 
 /// Platform services. All methods return immediately; the outcome arrives as a [`PlatformEvent`].
 pub trait Platform {
-    /// Lets the user choose up to `max` images. Answers with [`PlatformEvent::ImagesPicked`]
-    /// (an empty list means "cancelled") or [`PlatformEvent::PickFailed`].
+    /// Lets the user choose images; `max` is a hint for the picker's selection limit. Answers with
+    /// [`PlatformEvent::ImagesPicked`] (an empty list means "cancelled") or [`PlatformEvent::PickFailed`].
+    /// The answer may contain more than `max` paths: the controller cuts the list and tells the user.
     fn pick_images(&self, max: usize);
     /// Stores a JPEG in the gallery. Answers with [`PlatformEvent::Saved`].
     fn save_to_gallery(&self, jpeg: Vec<u8>);
     /// Opens the system share dialog for a JPEG. Answers with [`PlatformEvent::Shared`].
     fn share(&self, jpeg: Vec<u8>);
+    /// Closes the app, e.g. after a back gesture on the start screen that the app did not use.
+    fn close_app(&self);
 }
 
 /// Something that happened outside the app's own UI.

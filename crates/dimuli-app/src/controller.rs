@@ -13,7 +13,7 @@ use slint::ComponentHandle;
 
 use crate::images;
 use crate::platform::{Platform, PlatformEvent};
-use crate::state::{AppState, Insets};
+use crate::state::{AppState, BackOutcome, Insets};
 use crate::texts;
 use crate::ui::{AppWindow, Backend, Theme};
 use crate::view::Models;
@@ -74,7 +74,10 @@ impl Controller {
         }
 
         on!(on_pick_images, |c| c.pick_images());
-        on!(on_back_requested, |c| c.update(AppState::request_back));
+        on!(on_back_requested, |c| c.update(|s| {
+            // The in-app back button exists only in the editor, so the outcome does not matter.
+            s.request_back();
+        }));
         on!(on_back_confirmed, |c| c.update(AppState::confirm_back));
         on!(on_back_cancelled, |c| c.update(AppState::cancel_back));
         on!(on_save_requested, |c| c
@@ -150,7 +153,13 @@ impl Controller {
                     right,
                 })
             }),
-            PlatformEvent::BackPressed => self.update(AppState::request_back),
+            PlatformEvent::BackPressed => {
+                let outcome = self.state.borrow_mut().request_back();
+                self.refresh();
+                if outcome == BackOutcome::NotHandled {
+                    self.platform.close_app();
+                }
+            }
         }
     }
 

@@ -305,6 +305,13 @@ impl Collage {
         )
     }
 
+    /// Sets the framing of a cell, clamped like [`Collage::pan`] so the image still covers the cell.
+    /// Used to restore an earlier framing, e.g. to undo a pan.
+    pub fn set_transform(&mut self, id: CellId, transform: CellTransform) -> Result<(), CoreError> {
+        let (rect, _) = self.cell_rect_and_crop(id)?;
+        self.set_transform_clamped(id, rect, transform)
+    }
+
     /// Zooms the image inside a cell by `factor` (e.g. pinch scale), keeping the image point under `focus`
     /// fixed. `focus` is relative to the cell (`0.0..=1.0`, `(0.5, 0.5)` = center).
     /// Non-finite or non-positive factors and non-finite focus points are ignored.
@@ -602,6 +609,20 @@ mod tests {
         let after = c.placements()[0].crop;
         assert!(after.y > before.y, "dragging up reveals the lower part");
         assert!(close(after.x, before.x));
+    }
+
+    #[test]
+    fn set_transform_restores_an_earlier_framing() {
+        let mut c = collage(&[(400, 100)]);
+        let before = c.cells()[0].transform;
+        c.pan(CellId(0), Vec2::new(0.2, 0.0)).unwrap();
+        assert_ne!(c.cells()[0].transform, before);
+        c.set_transform(CellId(0), before).unwrap();
+        assert_eq!(c.cells()[0].transform, before);
+        assert_eq!(
+            c.set_transform(CellId(5), before),
+            Err(CoreError::UnknownCell(CellId(5)))
+        );
     }
 
     #[test]

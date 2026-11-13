@@ -4,8 +4,8 @@
 //! Rust without any window, so the behavior can be unit-tested.
 
 use collage_core::{
-    AspectRatio, CellId, Collage, CoreError, DividerId, MAX_IMAGES, Size, Style, Template, Vec2,
-    templates_for,
+    AspectRatio, CellId, CellTransform, Collage, CoreError, DividerId, MAX_IMAGES, Size, Style,
+    Template, Vec2, templates_for,
 };
 
 use crate::images::{ImageStore, LoadError, LoadedImage};
@@ -54,23 +54,38 @@ pub(crate) enum Gesture {
         cell: Option<CellId>,
         start: (f32, f32),
     },
-    /// Dragging the image inside a cell.
+    /// Dragging the image inside a cell. `origin` is the framing before the pan, so a pinch that starts
+    /// with this finger can undo it.
     Panning {
         cell: CellId,
         last: (f32, f32),
+        origin: CellTransform,
     },
     /// Long-press picked up `source`; releasing over another cell swaps them.
     Swapping {
         source: CellId,
         target: Option<CellId>,
     },
-    /// Dragging a divider by its handle.
+    /// Dragging a divider by its handle. `grab` is the pointer position minus the divider center (pixels),
+    /// so the divider follows the finger exactly and does not drift when the core stops it at a limit.
     DraggingDivider {
         id: DividerId,
-        last: (f32, f32),
+        grab: (f32, f32),
     },
-    /// Two-finger gesture in progress; single-pointer moves are ignored.
-    Pinching,
+    /// Two-finger gesture in progress; single-pointer moves are ignored. `cell` is the zoomed cell, chosen
+    /// at the first pinch update and kept for the whole gesture.
+    Pinching {
+        cell: Option<CellId>,
+    },
+}
+
+/// Whether the system back gesture was used by the app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BackOutcome {
+    /// The app reacted (dialog opened or closed).
+    Handled,
+    /// Nothing to go back to: the platform should close the app.
+    NotHandled,
 }
 
 /// Everything the UI shows.
@@ -202,15 +217,17 @@ impl AppState {
 
     // --- navigation ---
 
-    /// The back button or system back gesture: asks for confirmation in the editor.
-    pub(crate) fn request_back(&mut self) {
-        if self.busy {
-            return;
-        }
+    /// The back button or system back gesture: closes the confirmation dialog if open, otherwise asks for
+    /// confirmation in the editor. On the start screen (also while loading) there is nothing to go back to.
+    pub(crate) fn request_back(&mut self) -> BackOutcome {
         if self.confirm_back {
             self.confirm_back = false;
+            BackOutcome::Handled
         } else if self.screen == Screen::Editor {
             self.confirm_back = true;
+            BackOutcome::Handled
+        } else {
+            BackOutcome::NotHandled
         }
     }
 
@@ -227,6 +244,8 @@ impl AppState {
         self.template_index = None;
         self.images.clear();
         self.gesture = Gesture::Idle;
+        // Messages refer to the discarded collage.
+        self.message = None;
     }
 
     pub(crate) fn set_insets(&mut self, insets: Insets) {
@@ -275,10 +294,32 @@ impl AppState {
         view::pick_handle(&handles, Vec2::new(x, y))
     }
 
+    /// Center of a divider in canvas pixels.
+    fn divider_center_pixels(&self, id: DividerId) -> Option<(f32, f32)> {
+        let divider = self
+            .collage
+            .as_ref()?
+            .dividers()
+            .into_iter()
+            .find(|d| d.id == id)?;
+        let center = view::rect_to_pixels(divider.rect, self.scale()).center();
+        Some((center.x, center.y))
+    }
+
+    /// Current framing of a cell.
+    fn cell_transform(&self, cell: CellId) -> Option<CellTransform> {
+        let index = usize::try_from(cell.0).ok()?;
+        Some(self.collage.as_ref()?.cells().get(index)?.transform)
+    }
+
     pub(crate) fn press(&mut self, x: f32, y: f32) {
         // Handles take precedence over the cells below them.
         if let Some(id) = self.divider_at_pixels(x, y) {
-            self.gesture = Gesture::DraggingDivider { id, last: (x, y) };
+            let (cx, cy) = self.divider_center_pixels(id).unwrap_or((x, y));
+            self.gesture = Gesture::DraggingDivider {
+                id,
+                grab: (x - cx, y - cy),
+            };
             return;
         }
         self.gesture = Gesture::Pressed {
@@ -293,13 +334,16 @@ impl AppState {
                 cell: Some(cell),
                 start,
             } if distance(start, (x, y)) > DRAG_SLOP_PX => {
-                self.gesture = Gesture::Panning { cell, last: start };
-                self.pan(cell, start, (x, y));
+                if let Some(origin) = self.cell_transform(cell) {
+                    self.pan(cell, origin, start, (x, y));
+                }
             }
-            Gesture::Panning { cell, last } => self.pan(cell, last, (x, y)),
-            Gesture::DraggingDivider { id, last } => {
-                self.gesture = Gesture::DraggingDivider { id, last: (x, y) };
-                self.drag_divider(id, (x - last.0, y - last.1));
+            Gesture::Panning { cell, last, origin } => self.pan(cell, origin, last, (x, y)),
+            Gesture::DraggingDivider { id, grab } => {
+                // Move the divider center to where the finger wants it, measured from its current position.
+                if let Some((cx, cy)) = self.divider_center_pixels(id) {
+                    self.drag_divider(id, (x - grab.0 - cx, y - grab.1 - cy));
+                }
             }
             Gesture::Swapping { source, .. } => {
                 let target = self.cell_at_pixels(x, y).filter(|&c| c != source);
@@ -310,8 +354,12 @@ impl AppState {
     }
 
     /// Moves the image in `cell` by the pointer movement `from -> to` and remembers `to` as the last position.
-    fn pan(&mut self, cell: CellId, from: (f32, f32), to: (f32, f32)) {
-        self.gesture = Gesture::Panning { cell, last: to };
+    fn pan(&mut self, cell: CellId, origin: CellTransform, from: (f32, f32), to: (f32, f32)) {
+        self.gesture = Gesture::Panning {
+            cell,
+            last: to,
+            origin,
+        };
         let scale = self.scale();
         let (Some(dx), Some(dy)) = (
             view::pixels_to_units(to.0 - from.0, scale),
@@ -365,30 +413,46 @@ impl AppState {
 
     /// Mouse wheel: zooms the cell under the pointer. `delta` is the vertical scroll in pixels.
     pub(crate) fn scroll(&mut self, delta: f32, x: f32, y: f32) {
-        self.zoom_at(view::wheel_zoom_factor(delta), x, y);
+        if let Some(cell) = self.cell_at_pixels(x, y) {
+            self.zoom_cell(cell, view::wheel_zoom_factor(delta), x, y);
+        }
     }
 
+    /// A second finger came down. If the first finger already started a pan, that pan is undone: the user
+    /// meant to zoom, not to move the image.
     pub(crate) fn pinch_started(&mut self) {
-        self.gesture = Gesture::Pinching;
+        if let Gesture::Panning { cell, origin, .. } = self.gesture
+            && let Some(collage) = self.collage.as_mut()
+            && let Err(error) = collage.set_transform(cell, origin)
+        {
+            self.core_failed("undo pan", error);
+        }
+        self.gesture = Gesture::Pinching { cell: None };
     }
 
-    /// Pinch: zooms the cell under the gesture center by the relative `scale`.
+    /// Pinch: zooms by the relative `scale` the cell that was under the gesture center at the first update.
+    /// The center may later drift into another cell or a gap; the zoomed cell stays the same.
     pub(crate) fn pinch(&mut self, scale: f32, x: f32, y: f32) {
-        self.zoom_at(scale, x, y);
+        let Gesture::Pinching { cell } = self.gesture else {
+            return;
+        };
+        let Some(cell) = cell.or_else(|| self.cell_at_pixels(x, y)) else {
+            return;
+        };
+        self.gesture = Gesture::Pinching { cell: Some(cell) };
+        self.zoom_cell(cell, scale, x, y);
     }
 
-    fn zoom_at(&mut self, factor: f32, x: f32, y: f32) {
+    /// Zooms `cell` by `factor`, keeping the image point under the canvas pixel position fixed (clamped to
+    /// the cell if the position lies outside it).
+    fn zoom_cell(&mut self, cell: CellId, factor: f32, x: f32, y: f32) {
         let Some(point) = view::point_to_units(x, y, self.scale()) else {
             return;
         };
         let Some(collage) = self.collage.as_mut() else {
             return;
         };
-        let Some(placement) = collage
-            .placements()
-            .into_iter()
-            .find(|p| p.rect.contains(point))
-        else {
+        let Some(placement) = collage.placements().into_iter().find(|p| p.cell == cell) else {
             return;
         };
         let focus = view::focus_in_rect(point, placement.rect);
@@ -639,14 +703,29 @@ mod tests {
     }
 
     #[test]
-    fn back_on_start_screen_does_nothing_and_back_again_closes_dialog() {
+    fn back_on_start_screen_is_not_handled_and_back_again_closes_dialog() {
         let mut state = AppState::new();
-        state.request_back();
+        assert_eq!(state.request_back(), BackOutcome::NotHandled);
         assert!(!state.confirm_back);
+        assert!(state.begin_loading());
+        assert_eq!(state.request_back(), BackOutcome::NotHandled);
+
         let mut state = editor(&[(10, 10)]);
-        state.request_back();
-        state.request_back();
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert!(state.confirm_back);
+        assert_eq!(state.request_back(), BackOutcome::Handled);
         assert!(!state.confirm_back);
+    }
+
+    #[test]
+    fn going_back_clears_the_editor_message() {
+        let mut state = AppState::new();
+        state.begin_loading();
+        state.finish_loading(vec![Ok(loaded(10, 10)), broken()], false);
+        assert!(state.message.is_some());
+        state.request_back();
+        state.confirm_back();
+        assert_eq!(state.message, None);
     }
 
     #[test]
@@ -799,14 +878,62 @@ mod tests {
         let mut state = editor(&[(100, 100)]);
         state.press(150.0, 150.0);
         state.pinch_started();
-        assert_eq!(state.gesture, Gesture::Pinching);
+        assert_eq!(state.gesture, Gesture::Pinching { cell: None });
         state.pinch(2.0, 150.0, 150.0);
         let zoom = collage(&state).cells()[0].transform.zoom();
         assert!((zoom - 2.0).abs() < 1e-3);
         state.move_to(250.0, 250.0);
-        assert_eq!(state.gesture, Gesture::Pinching);
+        assert_eq!(
+            state.gesture,
+            Gesture::Pinching {
+                cell: Some(CellId(0))
+            }
+        );
         state.pinch(f32::NAN, 150.0, 150.0);
         assert!((collage(&state).cells()[0].transform.zoom() - zoom).abs() < 1e-6);
+    }
+
+    #[test]
+    fn pinch_keeps_zooming_the_first_cell_when_the_center_drifts() {
+        let mut state = editor(&[(100, 100), (100, 100)]);
+        let first = center_of_cell(&state, 0);
+        let second = center_of_cell(&state, 1);
+        state.pinch_started();
+        state.pinch(2.0, first.0, first.1);
+        state.pinch(1.5, second.0, second.1);
+        let cells = collage(&state).cells();
+        assert!((cells[0].transform.zoom() - 3.0).abs() < 1e-3);
+        assert!((cells[1].transform.zoom() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn pinch_starting_in_a_gap_picks_the_cell_at_a_later_update() {
+        let mut state = editor(&[(100, 100), (100, 100)]);
+        state.set_padding(0.1);
+        let p = center_of_cell(&state, 1);
+        state.pinch_started();
+        state.pinch(2.0, 1.0, 1.0);
+        assert_eq!(state.gesture, Gesture::Pinching { cell: None });
+        state.pinch(2.0, p.0, p.1);
+        assert!((collage(&state).cells()[1].transform.zoom() - 2.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn pinch_without_pinch_start_is_ignored() {
+        let mut state = editor(&[(100, 100)]);
+        state.pinch(2.0, 150.0, 150.0);
+        assert!((collage(&state).cells()[0].transform.zoom() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn pinch_undoes_the_pan_of_its_first_finger() {
+        let mut state = editor(&[(400, 100)]);
+        let before = collage(&state).cells()[0].transform;
+        state.press(150.0, 150.0);
+        state.move_to(190.0, 150.0);
+        assert_ne!(collage(&state).cells()[0].transform, before);
+        state.pinch_started();
+        assert_eq!(collage(&state).cells()[0].transform, before);
     }
 
     /// Center of the first divider's handle in pixels.
@@ -827,6 +954,24 @@ mod tests {
         state.release(x + 30.0, y + 30.0);
         assert_ne!(collage(&state).placements(), before);
         assert_eq!(state.gesture, Gesture::Idle);
+    }
+
+    #[test]
+    fn divider_stays_under_the_finger_after_hitting_a_limit() {
+        let mut state = editor(&[(100, 100), (100, 100)]);
+        let id = collage(&state).dividers()[0].id;
+        let (x, y) = handle_center(&state);
+        state.press(x + 3.0, y + 3.0);
+        // Far beyond the limit: the core stops the divider.
+        state.move_to(x + 1000.0, y + 1000.0);
+        // Back to a reachable position: the divider keeps the grab offset of 3 px to the finger, not the
+        // overshoot.
+        state.move_to(x + 30.0, y + 30.0);
+        let (cx, cy) = state.divider_center_pixels(id).unwrap();
+        match collage(&state).dividers()[0].dir {
+            collage_core::SplitDir::LeftRight => assert!((cx - (x + 27.0)).abs() < 0.5),
+            collage_core::SplitDir::TopBottom => assert!((cy - (y + 27.0)).abs() < 0.5),
+        }
     }
 
     #[test]

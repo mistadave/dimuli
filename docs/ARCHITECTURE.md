@@ -121,6 +121,7 @@ pub trait Platform {
     fn pick_images(&self, max: usize);                  // → PlatformEvent::ImagesPicked
     fn save_to_gallery(&self, jpeg: Vec<u8>);          // → PlatformEvent::Saved
     fn share(&self, jpeg: Vec<u8>);                    // → PlatformEvent::Shared
+    fn close_app(&self);                               // Zurück auf dem Startbildschirm beendet die App
 }
 
 pub enum PlatformEvent {
@@ -134,7 +135,8 @@ pub enum PlatformEvent {
 ```
 
 Desktop (`DesktopPlatform`): `pick_images` liefert die beim Start übergebenen Pfade (`cargo run -p dimuli-app -- a.jpg b.jpg`,
-höchstens `max`; ohne Argumente `PickFailed`). `save_to_gallery` und `share` melden bis Meilenstein 4 „nicht verfügbar“
+alle Pfade; der Controller kürzt auf `MAX_IMAGES` und zeigt den Hinweis; ohne Argumente `PickFailed`). `max` ist nur ein Hinweis.
+`close_app` beendet auf dem Desktop die Slint-Event-Loop. `save_to_gallery` und `share` melden bis Meilenstein 4 „nicht verfügbar“
 (danach schreibt `save_to_gallery` eine Datei ins Arbeitsverzeichnis).
 
 Die Plattform liefert Ergebnisse mit `platform::post_event(event)` (beliebiger Thread); das nutzt
@@ -161,6 +163,8 @@ zentriert auf dem Gap). Bei `press` prüft Rust zuerst die Griffe (bei Überlapp
 
 Export ist kein eigener Bildschirm, sondern ein Ladezustand (`busy`) über dem Editor.
 Zurück im Editor → Start (mit Rückfrage, da die Collage verloren geht).
+Zurück auf dem Startbildschirm (auch während des Ladens) ist nicht behandelt (`BackOutcome::NotHandled`);
+der Controller ruft dann `platform.close_app()` auf.
 
 ## Abläufe
 

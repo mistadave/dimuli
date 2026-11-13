@@ -100,7 +100,7 @@ pub(crate) fn load_image(path: &Path) -> Result<LoadedImage, LoadError> {
     let decoded = DynamicImage::from_decoder(decoder).map_err(LoadError::Decode)?;
 
     // Orient the small preview instead of the full image to save time and memory.
-    let mut preview = downscale(decoded);
+    let mut preview = downscale(decoded, PREVIEW_MAX_EDGE);
     preview.apply_orientation(orientation);
     let rgba = preview.into_rgba8();
     let (preview_width, preview_height) = rgba.dimensions();
@@ -120,13 +120,13 @@ pub(crate) fn load_image(path: &Path) -> Result<LoadedImage, LoadError> {
     })
 }
 
-/// Shrinks `image` to at most [`PREVIEW_MAX_EDGE`] on its longest edge, keeping the aspect ratio.
+/// Shrinks `image` to at most `max_edge` on its longest edge, keeping the aspect ratio.
 /// Takes ownership so the full-size pixels are freed as soon as the preview exists.
-fn downscale(image: DynamicImage) -> DynamicImage {
-    if image.width().max(image.height()) <= PREVIEW_MAX_EDGE {
+fn downscale(image: DynamicImage, max_edge: u32) -> DynamicImage {
+    if image.width().max(image.height()) <= max_edge {
         return image;
     }
-    image.thumbnail(PREVIEW_MAX_EDGE, PREVIEW_MAX_EDGE)
+    image.thumbnail(max_edge, max_edge)
 }
 
 /// Loads `paths` one after another on a new thread (one at a time keeps peak memory low) and calls `done`
@@ -276,25 +276,23 @@ mod tests {
 
     #[test]
     fn preview_is_limited_to_max_edge_and_keeps_aspect() {
-        let dir = temp_dir("big");
-        let path = dir.join("wide.png");
-        gradient(PREVIEW_MAX_EDGE * 2 + 8, 100).save(&path).unwrap();
-        let loaded = load_image(&path).unwrap();
-        assert_eq!(loaded.width, PREVIEW_MAX_EDGE * 2 + 8);
-        assert_eq!(loaded.preview.width(), PREVIEW_MAX_EDGE);
-        let expected = 100.0 * PREVIEW_MAX_EDGE as f32 / loaded.width as f32;
-        assert!((loaded.preview.height() as f32 - expected).abs() <= 1.0);
-        assert!(loaded.preview.height() >= 1);
+        let wide = DynamicImage::ImageRgb8(gradient(40, 10));
+        let small = downscale(wide, 16);
+        assert_eq!(small.width(), 16);
+        let expected = 10.0 * 16.0 / 40.0;
+        assert!((small.height() as f32 - expected).abs() <= 1.0);
+        // Images within the limit are returned untouched.
+        let fits = downscale(DynamicImage::ImageRgb8(gradient(16, 8)), 16);
+        assert_eq!((fits.width(), fits.height()), (16, 8));
     }
 
     #[test]
     fn extreme_aspect_ratio_keeps_one_pixel_side() {
-        let dir = temp_dir("strip");
-        let path = dir.join("strip.png");
-        gradient(PREVIEW_MAX_EDGE * 3, 1).save(&path).unwrap();
-        let loaded = load_image(&path).unwrap();
-        assert_eq!(loaded.preview.width(), PREVIEW_MAX_EDGE);
-        assert_eq!(loaded.preview.height(), 1);
+        let strip = DynamicImage::ImageRgb8(gradient(48, 1));
+        let small = downscale(strip, 16);
+        assert_eq!((small.width(), small.height()), (16, 1));
+        let tall = downscale(DynamicImage::ImageRgb8(gradient(1, 48)), 16);
+        assert_eq!((tall.width(), tall.height()), (1, 16));
     }
 
     #[test]
