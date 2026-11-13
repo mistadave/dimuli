@@ -13,8 +13,7 @@ use collage_core::{
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::images::ImageStore;
-use crate::state::{AppState, MessageKind};
-use crate::texts;
+use crate::state::{AppState, Busy, MessageKind};
 use crate::ui::{AppWindow, Backend, CellView, DividerView, Screen, TemplateRect, TemplateView};
 
 /// Gap used for template previews, relative to the preview size.
@@ -358,8 +357,8 @@ impl Models {
                 crate::state::Screen::Start => Screen::Start,
                 crate::state::Screen::Editor => Screen::Editor,
             },
-            busy: state.busy,
-            busy_text: texts::LOADING,
+            busy: state.busy.is_some(),
+            busy_text: state.busy.map_or("", Busy::text),
             message: state
                 .message
                 .as_ref()

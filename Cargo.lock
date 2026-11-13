@@ -775,6 +775,7 @@ dependencies = [
 name = "collage-core"
 version = "0.1.0"
 dependencies = [
+ "image",
  "thiserror 2.0.21",
 ]
 

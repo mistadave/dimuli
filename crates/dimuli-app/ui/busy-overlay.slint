@@ -7,7 +7,12 @@ export component BusyOverlay inherits Rectangle {
     background: Theme.scrim;
 
     // Swallows all input underneath.
-    TouchArea { }
+    TouchArea {
+        // The wheel must not reach the canvas underneath.
+        scroll-event(e) => {
+            accept
+        }
+    }
 
     VerticalLayout {
         alignment: center;

@@ -4,53 +4,18 @@
 //! [`SharedPixelBuffer`]s and become images in the UI thread (see [`ImageStore::insert`]).
 
 use std::collections::HashMap;
-use std::fmt;
 use std::io;
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 
-use collage_core::{ImageId, ImageMeta};
+use collage_core::decode::decode_unoriented;
+use collage_core::{Collage, CoreError, ImageId, ImageMeta, ImageSource};
+use image::DynamicImage;
 use image::metadata::Orientation;
-use image::{DynamicImage, ImageDecoder, ImageReader, Limits};
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 
 /// Longest edge of a preview in pixels; limits memory used by the UI.
 pub(crate) const PREVIEW_MAX_EDGE: u32 = 2048;
-/// Images with more pixels are rejected before decoding (protects against manipulated files).
-pub(crate) const DECODE_MAX_PIXELS: u64 = 100_000_000;
-/// Longest accepted side in pixels (a strict decoder limit; also catches 1-pixel-wide giants).
-const DECODE_MAX_EDGE: u32 = 16_384;
-/// Memory a decoder may allocate at once.
-const DECODE_MAX_ALLOC: u64 = 512 * 1024 * 1024;
-
-/// Why an image could not be loaded.
-#[derive(Debug)]
-pub(crate) enum LoadError {
-    /// The file could not be opened or read.
-    Io(io::Error),
-    /// The file is not a supported or intact image.
-    Decode(image::ImageError),
-    /// The image has more than [`DECODE_MAX_PIXELS`] pixels.
-    TooLarge { width: u32, height: u32 },
-    /// The image has a zero side.
-    Empty,
-    /// The decoder panicked (e.g. on a manipulated file); the image is skipped.
-    Panicked,
-}
-
-impl fmt::Display for LoadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LoadError::Io(e) => write!(f, "cannot read file: {e}"),
-            LoadError::Decode(e) => write!(f, "cannot decode image: {e}"),
-            LoadError::TooLarge { width, height } => {
-                write!(f, "image too large: {width}x{height}")
-            }
-            LoadError::Empty => write!(f, "image has no pixels"),
-            LoadError::Panicked => write!(f, "decoder panicked"),
-        }
-    }
-}
 
 /// A decoded image, ready to be handed to the UI thread.
 #[derive(Debug)]
@@ -75,29 +40,10 @@ fn swaps_axes(orientation: Orientation) -> bool {
     )
 }
 
-/// Decodes `path` and creates the oriented preview.
-pub(crate) fn load_image(path: &Path) -> Result<LoadedImage, LoadError> {
-    let mut reader = ImageReader::open(path)
-        .map_err(LoadError::Io)?
-        .with_guessed_format()
-        .map_err(LoadError::Io)?;
-    let mut limits = Limits::default();
-    limits.max_image_width = Some(DECODE_MAX_EDGE);
-    limits.max_image_height = Some(DECODE_MAX_EDGE);
-    limits.max_alloc = Some(DECODE_MAX_ALLOC);
-    reader.limits(limits);
-    let mut decoder = reader.into_decoder().map_err(LoadError::Decode)?;
-
-    let (width, height) = decoder.dimensions();
-    if width == 0 || height == 0 {
-        return Err(LoadError::Empty);
-    }
-    if u64::from(width) * u64::from(height) > DECODE_MAX_PIXELS {
-        return Err(LoadError::TooLarge { width, height });
-    }
-    // A broken EXIF block must not make the image unusable.
-    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
-    let decoded = DynamicImage::from_decoder(decoder).map_err(LoadError::Decode)?;
+/// Decodes `path` (with the core's limits) and creates the oriented preview.
+pub(crate) fn load_image(path: &Path) -> Result<LoadedImage, CoreError> {
+    let (decoded, orientation) = decode_unoriented(path)?;
+    let (width, height) = (decoded.width(), decoded.height());
 
     // Orient the small preview instead of the full image to save time and memory.
     let mut preview = downscale(decoded, PREVIEW_MAX_EDGE);
@@ -105,7 +51,10 @@ pub(crate) fn load_image(path: &Path) -> Result<LoadedImage, LoadError> {
     let rgba = preview.into_rgba8();
     let (preview_width, preview_height) = rgba.dimensions();
     if preview_width == 0 || preview_height == 0 {
-        return Err(LoadError::Empty);
+        return Err(CoreError::InvalidImageSize {
+            width: preview_width,
+            height: preview_height,
+        });
     }
     let (width, height) = if swaps_axes(orientation) {
         (height, width)
@@ -135,7 +84,7 @@ fn downscale(image: DynamicImage, max_edge: u32) -> DynamicImage {
 /// Fails only if the thread cannot be spawned; `done` is not called in that case.
 pub(crate) fn load_in_background<F>(paths: Vec<PathBuf>, done: F) -> io::Result<()>
 where
-    F: FnOnce(Vec<Result<LoadedImage, LoadError>>) + Send + 'static,
+    F: FnOnce(Vec<Result<LoadedImage, CoreError>>) + Send + 'static,
 {
     load_in_background_with(paths, load_image, done)
 }
@@ -144,8 +93,8 @@ where
 /// so `done` always runs and the UI never stays busy forever.
 fn load_in_background_with<L, F>(paths: Vec<PathBuf>, loader: L, done: F) -> io::Result<()>
 where
-    L: Fn(&Path) -> Result<LoadedImage, LoadError> + Send + 'static,
-    F: FnOnce(Vec<Result<LoadedImage, LoadError>>) + Send + 'static,
+    L: Fn(&Path) -> Result<LoadedImage, CoreError> + Send + 'static,
+    F: FnOnce(Vec<Result<LoadedImage, CoreError>>) + Send + 'static,
 {
     std::thread::Builder::new()
         .name("image-loader".into())
@@ -154,7 +103,12 @@ where
                 .iter()
                 .map(|path| {
                     std::panic::catch_unwind(AssertUnwindSafe(|| loader(path)))
-                        .unwrap_or(Err(LoadError::Panicked))
+                        .unwrap_or_else(|_| {
+                            Err(CoreError::ImageDecode {
+                                path: path.clone(),
+                                reason: "decoder panicked".to_owned(),
+                            })
+                        })
                         .inspect_err(|e| log::error!("skipping {}: {e}", path.display()))
                 })
                 .collect();
@@ -165,6 +119,8 @@ where
 
 /// An image known to the app.
 pub(crate) struct StoredImage {
+    /// The original file, used by the export.
+    pub(crate) path: PathBuf,
     pub(crate) preview: Image,
     /// Size of `preview` in pixels (differs from `meta` when the original was downscaled).
     pub(crate) preview_size: (u32, u32),
@@ -186,9 +142,11 @@ impl ImageStore {
         self.next_id = self.next_id.checked_add(1)?;
         let preview_size = (loaded.preview.width(), loaded.preview.height());
         log::debug!("loaded {} as {id:?}", loaded.path.display());
+        let path = loaded.path;
         self.images.insert(
             id,
             StoredImage {
+                path,
                 preview: Image::from_rgba8(loaded.preview),
                 preview_size,
             },
@@ -198,6 +156,22 @@ impl ImageStore {
 
     pub(crate) fn get(&self, id: ImageId) -> Option<&StoredImage> {
         self.images.get(&id)
+    }
+
+    /// The export sources for the images used by `collage`. Images without a stored file are left out;
+    /// the renderer reports them as missing.
+    pub(crate) fn sources(&self, collage: &Collage) -> Vec<ImageSource> {
+        collage
+            .cells()
+            .iter()
+            .filter_map(|cell| {
+                let id = cell.image.id();
+                self.images.get(&id).map(|stored| ImageSource {
+                    id,
+                    path: stored.path.clone(),
+                })
+            })
+            .collect()
     }
 
     /// Number of stored images.
@@ -300,7 +274,10 @@ mod tests {
         let dir = temp_dir("corrupt");
         let path = dir.join("broken.png");
         std::fs::write(&path, b"\x89PNG\r\n\x1a\nthis is not a png").unwrap();
-        assert!(matches!(load_image(&path), Err(LoadError::Decode(_))));
+        assert!(matches!(
+            load_image(&path),
+            Err(CoreError::ImageDecode { .. })
+        ));
     }
 
     #[test]
@@ -316,7 +293,10 @@ mod tests {
     #[test]
     fn missing_file_is_an_io_error() {
         let path = std::env::temp_dir().join("dimuli-test-does-not-exist.png");
-        assert!(matches!(load_image(&path), Err(LoadError::Io(_))));
+        assert!(matches!(
+            load_image(&path),
+            Err(CoreError::ImageDecode { .. })
+        ));
     }
 
     #[test]
@@ -408,21 +388,27 @@ mod tests {
         let dir = temp_dir("huge");
         let path = dir.join("huge.png");
         std::fs::write(&path, png_header_only(20_000, 20_000)).unwrap();
-        assert!(matches!(load_image(&path), Err(LoadError::Decode(_))));
+        assert!(matches!(
+            load_image(&path),
+            Err(CoreError::ImageDecode { .. })
+        ));
         // Within the edge limit but above the pixel budget.
         std::fs::write(&path, png_header_only(10_100, 10_000)).unwrap();
         let r = load_image(&path);
-        assert!(matches!(r, Err(LoadError::TooLarge { .. })), "{r:?}");
+        assert!(matches!(r, Err(CoreError::ImageTooLarge { .. })), "{r:?}");
     }
 
     #[test]
     fn panicking_loader_is_skipped_and_done_still_runs() {
         let (tx, rx) = std::sync::mpsc::channel();
-        let loader = |path: &Path| -> Result<LoadedImage, LoadError> {
+        let loader = |path: &Path| -> Result<LoadedImage, CoreError> {
             if path.to_str() == Some("boom") {
                 std::panic::panic_any("decoder bug");
             }
-            Err(LoadError::Empty)
+            Err(CoreError::InvalidImageSize {
+                width: 0,
+                height: 0,
+            })
         };
         load_in_background_with(
             vec!["ok".into(), "boom".into(), "ok".into()],
@@ -434,9 +420,24 @@ mod tests {
         .unwrap();
         let results = rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
         assert_eq!(results.len(), 3);
-        assert!(matches!(results[0], Err(LoadError::Empty)));
-        assert!(matches!(results[1], Err(LoadError::Panicked)));
-        assert!(matches!(results[2], Err(LoadError::Empty)));
+        assert!(matches!(
+            results[0],
+            Err(CoreError::InvalidImageSize {
+                width: 0,
+                height: 0
+            })
+        ));
+        assert!(matches!(
+            &results[1],
+            Err(CoreError::ImageDecode { reason, .. }) if reason.contains("panicked")
+        ));
+        assert!(matches!(
+            results[2],
+            Err(CoreError::InvalidImageSize {
+                width: 0,
+                height: 0
+            })
+        ));
     }
 
     #[test]
@@ -465,6 +466,28 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert!(results[0].is_err());
         assert_eq!(results[1].as_ref().unwrap().width, 10);
+    }
+
+    #[test]
+    fn store_builds_sources_with_original_paths_for_the_collage() {
+        let dir = temp_dir("sources");
+        let path = dir.join("a.png");
+        gradient(12, 6).save(&path).unwrap();
+        let mut store = ImageStore::default();
+        let meta = store.insert(load_image(&path).unwrap()).unwrap();
+        let template = collage_core::templates_for(1).remove(0);
+        let collage = Collage::new(&[meta], &template).unwrap();
+        let sources = store.sources(&collage);
+        assert_eq!(
+            sources,
+            vec![ImageSource {
+                id: meta.id(),
+                path
+            }]
+        );
+        // After clearing, nothing is left to export.
+        store.clear();
+        assert!(store.sources(&collage).is_empty());
     }
 
     #[test]

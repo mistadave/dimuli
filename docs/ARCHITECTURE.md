@@ -45,7 +45,8 @@ Reine Rust-Logik ohne UI- oder Plattformabhängigkeit. Module:
 | `templates` | Vorlagen je Bildanzahl: ausgewogene Raster (Zeilen/Spalten) plus „großes Bild links/oben“ für 3–5 |
 | `collage` | `Collage` (Gesamtmodell) und alle Bearbeitungsoperationen |
 | `crop` | Zuschnitt: aus Bildgröße, Zellgröße und `CellTransform` das sichtbare Quellrechteck |
-| `render` | Export: Bilder dekodieren, zuschneiden, zusammensetzen, als JPEG/PNG kodieren |
+| `decode` | `decode_unoriented(path)` (Dekodieren mit Limits `DECODE_MAX_*`, liefert Bild + EXIF-Orientierung) und `decode_image(path)` (zusätzlich orientiert); geteilt von Export und App-Vorschau |
+| `render` | Export: `compose` (Bilder einzeln über `decode_unoriented` dekodieren, den `placements()`-Crop in gespeicherte Pixel zurückrechnen, ohne Kopie als View direkt auf Zellgröße verkleinern und erst die kleine Zelle orientieren – Spitzenspeicher ≈ dekodiertes Bild + Zelle; 16-Bit/Float/Graustufen+Alpha brauchen zusätzlich eine 8-Bit-RGBA-Kopie des sichtbaren Ausschnitts; Quellen mit Alpha werden premultipliziert skaliert, damit keine Farbsäume entstehen; Eckenradius per antialiasierter Abdeckungsmaske, Kantenrundung der Pixelrechtecke ohne Lücken) und `render` (JPEG-Kodierung); `ExportOptions { long_edge, jpeg_quality }` wird geklemmt (`1..=MAX_EXPORT_LONG_EDGE` = 8192, Qualität 1–100); Hintergrund mit Alpha wird über Weiß gemischt |
 | `error` | `CoreError` (`thiserror`) |
 
 ### Datenmodell
@@ -76,7 +77,7 @@ pub struct CellTransform {
 ```
 
 Der Core kennt Bilder nur als `ImageId` + Pixelgröße (`ImageMeta { id, width, height }`), nie als Pixeldaten –
-außer im `render`-Modul, das Dateipfade bekommt.
+außer in `decode` und `render`, die Dateipfade (`ImageSource { id, path }`) bekommen.
 
 ### Wichtigste Operationen
 
@@ -105,8 +106,8 @@ pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -
 |---|---|
 | `lib.rs` | `run(platform)`: UI erstellen, Controller verdrahten; `android_main` ruft `run` mit `AndroidPlatform` |
 | `main.rs` | Desktop-Einstieg: `run(DesktopPlatform)` |
-| `state.rs` | `AppState { screen, collage, images, busy, message, templates, canvas, insets, confirm_back, gesture }` samt allen Zustandsübergängen (Gesten-Zustandsmaschine `Gesture`, Laden, Zurück, Stil); reines Rust, ohne Fenster testbar |
-| `images.rs` | Laden im Hintergrund-Thread (Limits, EXIF-Orientierung, Vorschau ≤ `PREVIEW_MAX_EDGE`); `ImageStore`: `ImageId → { preview: slint::Image, preview_size }` (der Originalpfad kommt mit dem Export, Meilenstein 4) |
+| `state.rs` | `AppState { screen, collage, images, busy: Option<Busy>, message, templates, canvas, insets, confirm_back, gesture }` samt allen Zustandsübergängen (Gesten-Zustandsmaschine `Gesture`, Laden, Export, Zurück, Stil); reines Rust, ohne Fenster testbar |
+| `images.rs` | Laden im Hintergrund-Thread (Dekodieren über `collage_core::decode_unoriented`, danach Vorschau ≤ `PREVIEW_MAX_EDGE` verkleinern und orientieren; Fehler sind `CoreError`); `ImageStore`: `ImageId → { path, preview: slint::Image, preview_size }`, `sources(&Collage)` liefert die `ImageSource`s für den Export |
 | `controller.rs` | Dünn: verbindet UI-Callbacks und `PlatformEvent`s mit `AppState`-Übergängen und stößt danach `refresh` an; `post()` bringt Aktionen aus anderen Threads in den UI-Thread (Controller per `thread_local` auffindbar) |
 | `view.rs` | Reine Umrechnung Collage-Einheiten ↔ Pixel (1.0 = Canvas-Breite in px), `source-clip-*`, Trennlinien-Touchflächen (≥ 48 px), Wheel-Zoom; `Models::snapshot/apply` schreibt `CellView`/`DividerView`/`TemplateView` in die Slint-Models (nur geänderte Zeilen) |
 | `texts.rs` | Vom Rust-Code erzeugte deutsche Meldungen (Texte der `.slint`-Dateien: `ui/texts.slint`) |
@@ -136,8 +137,8 @@ pub enum PlatformEvent {
 
 Desktop (`DesktopPlatform`): `pick_images` liefert die beim Start übergebenen Pfade (`cargo run -p dimuli-app -- a.jpg b.jpg`,
 alle Pfade; der Controller kürzt auf `MAX_IMAGES` und zeigt den Hinweis; ohne Argumente `PickFailed`). `max` ist nur ein Hinweis.
-`close_app` beendet auf dem Desktop die Slint-Event-Loop. `save_to_gallery` und `share` melden bis Meilenstein 4 „nicht verfügbar“
-(danach schreibt `save_to_gallery` eine Datei ins Arbeitsverzeichnis).
+`close_app` beendet auf dem Desktop die Slint-Event-Loop. `save_to_gallery` schreibt `dimuli-<Unix-Sekunden>.jpg` ins Arbeitsverzeichnis
+(nie überschreibend: bei Kollision `-1`, `-2`, …; der volle Pfad wird geloggt); `share` meldet „nicht verfügbar“.
 
 Die Plattform liefert Ergebnisse mit `platform::post_event(event)` (beliebiger Thread); das nutzt
 `invoke_from_event_loop` und findet den Controller über ein `thread_local`.
@@ -174,8 +175,10 @@ Bildgröße + erzeugt Vorschaubild → Controller erstellt `Collage` mit erster 
 **Bearbeiten (synchron, UI-Thread):** Geste in Slint → Callback → `collage.drag_divider/pan/zoom/swap` →
 `view::update(...)` → Slint zeichnet neu. Keine Threads, keine Kopien der Bilder.
 
-**Exportieren:** Controller klont `Collage` + Liste der Original-Pfade → Thread: `render()` → JPEG-Bytes →
-`invoke_from_event_loop` → `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shared` → Meldung.
+**Exportieren:** `AppState::begin_export` (nur im Editor und wenn nicht `busy`) setzt `busy = Exporting`, beendet laufende Gesten und liefert einen `ExportJob` (geklonte `Collage` + `ImageSource`s aus dem `ImageStore`) →
+Thread `exporter`: `render()` (Panic wird per `catch_unwind` zum Fehler) → `post` → `AppState::finish_export` beendet `busy` (Ende des Ladezustands ist das Render-Ende, nicht die Antwort der Plattform) →
+bei Erfolg `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shared` → Meldung; bei Fehler wird der `CoreError` geloggt und eine deutsche Meldung gezeigt
+(Quellbild fehlt/unlesbar vs. allgemein). Während des Exports schluckt das Overlay alle Eingaben und die Zurück-Geste ist `Handled` (ohne Wirkung).
 
 ## Grenzen und Konstanten (v1)
 

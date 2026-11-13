@@ -4,11 +4,11 @@
 //! Rust without any window, so the behavior can be unit-tested.
 
 use collage_core::{
-    AspectRatio, CellId, CellTransform, Collage, CoreError, DividerId, MAX_IMAGES, Size, Style,
-    Template, Vec2, templates_for,
+    AspectRatio, CellId, CellTransform, Collage, CoreError, DividerId, ImageSource, MAX_IMAGES,
+    Size, Style, Template, Vec2, templates_for,
 };
 
-use crate::images::{ImageStore, LoadError, LoadedImage};
+use crate::images::{ImageStore, LoadedImage};
 use crate::texts;
 use crate::view::{self, BACKGROUND_PRESETS, SwapHighlight};
 
@@ -88,12 +88,49 @@ pub(crate) enum BackOutcome {
     NotHandled,
 }
 
+/// What an export does with the rendered JPEG.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExportAction {
+    /// Store it in the gallery.
+    Save,
+    /// Open the system share dialog.
+    Share,
+}
+
+/// Why the UI is blocked by the busy overlay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Busy {
+    /// Images are being decoded.
+    Loading,
+    /// The collage is being rendered.
+    Exporting,
+}
+
+impl Busy {
+    /// Text shown below the progress indicator.
+    pub(crate) fn text(self) -> &'static str {
+        match self {
+            Busy::Loading => texts::LOADING,
+            Busy::Exporting => texts::EXPORTING,
+        }
+    }
+}
+
+/// Everything the background thread needs to render the collage; owns its data (no shared state).
+#[derive(Debug)]
+pub(crate) struct ExportJob {
+    pub(crate) action: ExportAction,
+    pub(crate) collage: Collage,
+    pub(crate) sources: Vec<ImageSource>,
+}
+
 /// Everything the UI shows.
 pub(crate) struct AppState {
     pub(crate) screen: Screen,
     pub(crate) collage: Option<Collage>,
     pub(crate) images: ImageStore,
-    pub(crate) busy: bool,
+    /// `Some` while a background task runs; the overlay then blocks all input.
+    pub(crate) busy: Option<Busy>,
     pub(crate) message: Option<Message>,
     pub(crate) templates: Vec<Template>,
     pub(crate) template_index: Option<usize>,
@@ -112,7 +149,7 @@ impl AppState {
             screen: Screen::Start,
             collage: None,
             images: ImageStore::default(),
-            busy: false,
+            busy: None,
             message: None,
             templates: Vec::new(),
             template_index: None,
@@ -155,10 +192,10 @@ impl AppState {
     /// Marks loading as started. `false` if loading is already running or the editor is open.
     /// Only possible on the start screen: a late pick result must not wipe an open collage.
     pub(crate) fn begin_loading(&mut self) -> bool {
-        if self.busy || self.screen != Screen::Start {
+        if self.busy.is_some() || self.screen != Screen::Start {
             return false;
         }
-        self.busy = true;
+        self.busy = Some(Busy::Loading);
         self.message = None;
         self.images.clear();
         true
@@ -166,7 +203,7 @@ impl AppState {
 
     /// Ends loading without a result (e.g. the loader thread could not start).
     pub(crate) fn loading_failed(&mut self) {
-        self.busy = false;
+        self.busy = None;
         self.images.clear();
         self.show_error(texts::GENERIC_ERROR);
     }
@@ -175,10 +212,10 @@ impl AppState {
     /// `truncated` tells that more images were chosen than [`MAX_IMAGES`].
     pub(crate) fn finish_loading(
         &mut self,
-        results: Vec<Result<LoadedImage, LoadError>>,
+        results: Vec<Result<LoadedImage, CoreError>>,
         truncated: bool,
     ) {
-        self.busy = false;
+        self.busy = None;
         let total = results.len();
         let metas: Vec<_> = results
             .into_iter()
@@ -215,12 +252,59 @@ impl AppState {
         }
     }
 
+    // --- export ---
+
+    /// Starts an export: only in the editor and when nothing else is running. Returns the data for the
+    /// render thread, or `None` if the export must not start. The collage is cloned, so the render does not
+    /// depend on what happens in the UI afterwards.
+    pub(crate) fn begin_export(&mut self, action: ExportAction) -> Option<ExportJob> {
+        if self.busy.is_some() || self.screen != Screen::Editor {
+            return None;
+        }
+        let collage = self.collage.clone()?;
+        let sources = self.images.sources(&collage);
+        self.busy = Some(Busy::Exporting);
+        self.message = None;
+        self.confirm_back = false;
+        // A finger that is still down must not keep editing once the overlay appears.
+        self.gesture = Gesture::Idle;
+        Some(ExportJob {
+            action,
+            collage,
+            sources,
+        })
+    }
+
+    /// Ends the export. On success returns the JPEG for the platform; on failure shows an error for the user.
+    /// The busy state ends here, not when the platform answers: saving and sharing report back through
+    /// [`PlatformEvent`](crate::platform::PlatformEvent)s and must not block the editor.
+    pub(crate) fn finish_export(&mut self, result: Result<Vec<u8>, CoreError>) -> Option<Vec<u8>> {
+        self.busy = None;
+        match result {
+            Ok(jpeg) => Some(jpeg),
+            Err(error) => {
+                log::error!("export failed: {error}");
+                self.show_error(texts::export_error(&error));
+                None
+            }
+        }
+    }
+
+    /// The export could not start (e.g. the render thread could not be spawned).
+    pub(crate) fn export_failed(&mut self) {
+        self.busy = None;
+        self.show_error(texts::GENERIC_ERROR);
+    }
+
     // --- navigation ---
 
     /// The back button or system back gesture: closes the confirmation dialog if open, otherwise asks for
     /// confirmation in the editor. On the start screen (also while loading) there is nothing to go back to.
+    /// While exporting, back is swallowed: neither the app closes nor the collage is discarded mid-render.
     pub(crate) fn request_back(&mut self) -> BackOutcome {
-        if self.confirm_back {
+        if self.busy == Some(Busy::Exporting) {
+            BackOutcome::Handled
+        } else if self.confirm_back {
             self.confirm_back = false;
             BackOutcome::Handled
         } else if self.screen == Screen::Editor {
@@ -265,6 +349,9 @@ impl AppState {
     }
 
     // --- gestures ---
+
+    // Every edit entry point below starts with `if self.busy.is_some() { return; }`: while a background task
+    // runs, the overlay blocks the touches, but the state must not depend on that alone (wheel, late timers).
 
     fn scale(&self) -> f32 {
         view::pixels_per_unit(self.canvas)
@@ -313,6 +400,9 @@ impl AppState {
     }
 
     pub(crate) fn press(&mut self, x: f32, y: f32) {
+        if self.busy.is_some() {
+            return;
+        }
         // Handles take precedence over the cells below them.
         if let Some(id) = self.divider_at_pixels(x, y) {
             let (cx, cy) = self.divider_center_pixels(id).unwrap_or((x, y));
@@ -329,6 +419,9 @@ impl AppState {
     }
 
     pub(crate) fn move_to(&mut self, x: f32, y: f32) {
+        if self.busy.is_some() {
+            return;
+        }
         match self.gesture {
             Gesture::Pressed {
                 cell: Some(cell),
@@ -377,6 +470,9 @@ impl AppState {
 
     /// The long-press timer fired: picks up the pressed cell unless the pointer already moved.
     pub(crate) fn long_press(&mut self) {
+        if self.busy.is_some() {
+            return;
+        }
         if let Gesture::Pressed {
             cell: Some(source), ..
         } = self.gesture
@@ -389,6 +485,9 @@ impl AppState {
     }
 
     pub(crate) fn release(&mut self, x: f32, y: f32) {
+        if self.busy.is_some() {
+            return;
+        }
         let gesture = std::mem::replace(&mut self.gesture, Gesture::Idle);
         if let Gesture::Swapping { source, .. } = gesture {
             // Releasing outside every cell cancels the swap (no fallback to the last hover target).
@@ -413,6 +512,9 @@ impl AppState {
 
     /// Mouse wheel: zooms the cell under the pointer. `delta` is the vertical scroll in pixels.
     pub(crate) fn scroll(&mut self, delta: f32, x: f32, y: f32) {
+        if self.busy.is_some() {
+            return;
+        }
         if let Some(cell) = self.cell_at_pixels(x, y) {
             self.zoom_cell(cell, view::wheel_zoom_factor(delta), x, y);
         }
@@ -421,6 +523,9 @@ impl AppState {
     /// A second finger came down. If the first finger already started a pan, that pan is undone: the user
     /// meant to zoom, not to move the image.
     pub(crate) fn pinch_started(&mut self) {
+        if self.busy.is_some() {
+            return;
+        }
         if let Gesture::Panning { cell, origin, .. } = self.gesture
             && let Some(collage) = self.collage.as_mut()
             && let Err(error) = collage.set_transform(cell, origin)
@@ -433,6 +538,9 @@ impl AppState {
     /// Pinch: zooms by the relative `scale` the cell that was under the gesture center at the first update.
     /// The center may later drift into another cell or a gap; the zoomed cell stays the same.
     pub(crate) fn pinch(&mut self, scale: f32, x: f32, y: f32) {
+        if self.busy.is_some() {
+            return;
+        }
         let Gesture::Pinching { cell } = self.gesture else {
             return;
         };
@@ -481,6 +589,9 @@ impl AppState {
     // --- templates and style ---
 
     pub(crate) fn select_template(&mut self, index: i32) {
+        if self.busy.is_some() {
+            return;
+        }
         let Some(template) = usize::try_from(index)
             .ok()
             .and_then(|i| self.templates.get(i).map(|t| (i, t.clone())))
@@ -497,6 +608,9 @@ impl AppState {
     }
 
     pub(crate) fn select_aspect(&mut self, index: i32) {
+        if self.busy.is_some() {
+            return;
+        }
         let aspect = usize::try_from(index)
             .ok()
             .and_then(|i| AspectRatio::ALL.get(i).copied());
@@ -514,18 +628,30 @@ impl AppState {
     }
 
     pub(crate) fn set_spacing(&mut self, value: f32) {
+        if self.busy.is_some() {
+            return;
+        }
         self.update_style(|s| s.spacing = value);
     }
 
     pub(crate) fn set_padding(&mut self, value: f32) {
+        if self.busy.is_some() {
+            return;
+        }
         self.update_style(|s| s.padding = value);
     }
 
     pub(crate) fn set_corner_radius(&mut self, value: f32) {
+        if self.busy.is_some() {
+            return;
+        }
         self.update_style(|s| s.corner_radius = value);
     }
 
     pub(crate) fn select_background(&mut self, index: i32) {
+        if self.busy.is_some() {
+            return;
+        }
         let color = usize::try_from(index)
             .ok()
             .and_then(|i| BACKGROUND_PRESETS.get(i).copied());
@@ -569,8 +695,11 @@ mod tests {
         }
     }
 
-    fn broken() -> Result<LoadedImage, LoadError> {
-        Err(LoadError::Empty)
+    fn broken() -> Result<LoadedImage, CoreError> {
+        Err(CoreError::InvalidImageSize {
+            width: 0,
+            height: 0,
+        })
     }
 
     /// Editor state with `sizes.len()` images and a 300x300 px canvas.
@@ -616,7 +745,7 @@ mod tests {
         assert_eq!(collage(&state).cells().len(), 3);
         assert_eq!(state.template_index, Some(0));
         assert!(!state.templates.is_empty());
-        assert!(!state.busy);
+        assert!(state.busy.is_none());
         assert_eq!(state.message, None);
     }
 
@@ -649,7 +778,7 @@ mod tests {
         state.finish_loading(vec![broken(), broken()], false);
         assert_eq!(state.screen, Screen::Start);
         assert!(state.collage.is_none());
-        assert!(!state.busy);
+        assert!(state.busy.is_none());
         assert_eq!(state.message.unwrap().kind, MessageKind::Error);
     }
 
@@ -682,7 +811,7 @@ mod tests {
         assert!(state.begin_loading());
         assert!(!state.begin_loading());
         state.loading_failed();
-        assert!(!state.busy);
+        assert!(state.busy.is_none());
         assert_eq!(state.message.unwrap().kind, MessageKind::Error);
     }
 
@@ -818,7 +947,7 @@ mod tests {
         let mut state = editor(&[(100, 100)]);
         assert!(!state.begin_loading());
         assert_eq!(state.images.len(), 1);
-        assert!(!state.busy);
+        assert!(state.busy.is_none());
     }
 
     #[test]
@@ -1117,5 +1246,152 @@ mod tests {
         state.select_template(0);
         state.set_spacing(0.01);
         assert_eq!(state.message, None);
+    }
+
+    #[test]
+    fn edits_while_exporting_change_nothing() {
+        let mut state = editor(&[(100, 100), (100, 100), (100, 100)]);
+        state.begin_export(ExportAction::Save).unwrap();
+        let placements = collage(&state).placements();
+        let cells: Vec<_> = collage(&state)
+            .cells()
+            .iter()
+            .map(|c| c.transform)
+            .collect();
+        let ids = image_ids(&state);
+        let style = collage(&state).style();
+        let aspect = collage(&state).aspect();
+        let (x, y) = center_of_cell(&state, 0);
+        let (hx, hy) = handle_center(&state);
+
+        state.press(x, y);
+        state.move_to(x + 50.0, y);
+        state.long_press();
+        state.release(x + 50.0, y);
+        state.press(hx, hy);
+        state.move_to(hx + 30.0, hy + 30.0);
+        state.release(hx + 30.0, hy + 30.0);
+        state.scroll(60.0, x, y);
+        state.pinch_started();
+        state.pinch(2.0, x, y);
+        state.select_template(1);
+        state.select_aspect(3);
+        state.set_spacing(0.02);
+        state.set_padding(0.05);
+        state.set_corner_radius(0.05);
+        state.select_background(1);
+
+        assert_eq!(state.gesture, Gesture::Idle);
+        assert_eq!(state.template_index, Some(0));
+        assert_eq!(collage(&state).placements(), placements);
+        let after: Vec<_> = collage(&state)
+            .cells()
+            .iter()
+            .map(|c| c.transform)
+            .collect();
+        assert_eq!(after, cells);
+        assert_eq!(image_ids(&state), ids);
+        assert_eq!(collage(&state).style(), style);
+        assert_eq!(collage(&state).aspect(), aspect);
+    }
+
+    #[test]
+    fn export_starts_in_the_editor_and_blocks_input() {
+        let mut state = editor(&[(40, 30), (30, 40)]);
+        state.show_notice("old");
+        let job = state.begin_export(ExportAction::Share).unwrap();
+        assert_eq!(job.action, ExportAction::Share);
+        assert_eq!(job.sources.len(), 2);
+        assert_eq!(job.collage.cells().len(), 2);
+        assert_eq!(state.busy, Some(Busy::Exporting));
+        assert_eq!(Busy::Exporting.text(), texts::EXPORTING);
+        assert!(state.message.is_none());
+    }
+
+    #[test]
+    fn export_is_refused_on_the_start_screen_and_while_busy() {
+        let mut state = AppState::new();
+        assert!(state.begin_export(ExportAction::Save).is_none());
+        assert!(state.busy.is_none());
+
+        let mut state = editor(&[(40, 30)]);
+        assert!(state.begin_export(ExportAction::Save).is_some());
+        assert!(state.begin_export(ExportAction::Save).is_none());
+        assert!(state.begin_export(ExportAction::Share).is_none());
+    }
+
+    #[test]
+    fn export_cannot_start_while_loading() {
+        let mut state = editor(&[(40, 30)]);
+        state.busy = Some(Busy::Loading);
+        assert!(state.begin_export(ExportAction::Save).is_none());
+    }
+
+    #[test]
+    fn starting_an_export_ends_a_running_gesture() {
+        let mut state = editor(&[(40, 30), (30, 40)]);
+        let (x, y) = center_of_cell(&state, 0);
+        state.press(x, y);
+        assert_ne!(state.gesture, Gesture::Idle);
+        assert!(state.begin_export(ExportAction::Save).is_some());
+        assert_eq!(state.gesture, Gesture::Idle);
+    }
+
+    #[test]
+    fn finishing_an_export_returns_the_jpeg_and_unblocks() {
+        let mut state = editor(&[(40, 30)]);
+        state.begin_export(ExportAction::Save).unwrap();
+        assert_eq!(state.finish_export(Ok(vec![1, 2, 3])), Some(vec![1, 2, 3]));
+        assert!(state.busy.is_none());
+        assert!(state.message.is_none());
+        assert_eq!(state.screen, Screen::Editor);
+    }
+
+    #[test]
+    fn failed_export_unblocks_and_shows_a_specific_error() {
+        let mut state = editor(&[(40, 30)]);
+        state.begin_export(ExportAction::Save).unwrap();
+        let error = CoreError::MissingSource(collage_core::ImageId(0));
+        assert_eq!(state.finish_export(Err(error)), None);
+        assert!(state.busy.is_none());
+        let message = state.message.as_ref().unwrap();
+        assert_eq!(message.kind, MessageKind::Error);
+        assert_eq!(message.text, texts::EXPORT_SOURCE_UNREADABLE);
+
+        state.begin_export(ExportAction::Save).unwrap();
+        state.finish_export(Err(CoreError::Encode("x".into())));
+        assert_eq!(state.message.as_ref().unwrap().text, texts::GENERIC_ERROR);
+    }
+
+    #[test]
+    fn export_thread_failure_unblocks() {
+        let mut state = editor(&[(40, 30)]);
+        state.begin_export(ExportAction::Save).unwrap();
+        state.export_failed();
+        assert!(state.busy.is_none());
+        assert_eq!(state.message.as_ref().unwrap().kind, MessageKind::Error);
+    }
+
+    #[test]
+    fn back_while_exporting_is_handled_and_changes_nothing() {
+        let mut state = editor(&[(40, 30)]);
+        state.begin_export(ExportAction::Save).unwrap();
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert!(!state.confirm_back);
+        assert_eq!(state.screen, Screen::Editor);
+        assert!(state.collage.is_some());
+        // After the export, back works as usual.
+        state.finish_export(Ok(vec![0]));
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert!(state.confirm_back);
+    }
+
+    #[test]
+    fn export_of_one_and_max_images_collects_all_sources() {
+        for count in [1, MAX_IMAGES] {
+            let mut state = editor(&vec![(40, 30); count]);
+            let job = state.begin_export(ExportAction::Save).unwrap();
+            assert_eq!(job.sources.len(), count);
+        }
     }
 }

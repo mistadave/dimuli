@@ -1,6 +1,9 @@
 //! Error type of the collage core.
 
+use std::path::PathBuf;
+
 use crate::MAX_IMAGES;
+use crate::collage::ImageId;
 use crate::layout::{CellId, DividerId};
 
 /// Errors returned by collage operations.
@@ -34,4 +37,26 @@ pub enum CoreError {
     /// No divider with this id.
     #[error("unknown divider {0:?}")]
     UnknownDivider(DividerId),
+    /// The export has no source file for this image.
+    #[error("no source file for image {0:?}")]
+    MissingSource(ImageId),
+    /// An image file could not be read or decoded.
+    #[error("cannot decode {}: {reason}", path.display())]
+    ImageDecode {
+        /// The file that failed.
+        path: PathBuf,
+        /// Human-readable cause (for logs).
+        reason: String,
+    },
+    /// An image exceeds the decode limits.
+    #[error("image too large: {width}x{height}")]
+    ImageTooLarge {
+        /// Width in pixels.
+        width: u32,
+        /// Height in pixels.
+        height: u32,
+    },
+    /// The composed collage could not be encoded.
+    #[error("cannot encode collage: {0}")]
+    Encode(String),
 }

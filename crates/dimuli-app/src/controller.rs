@@ -5,15 +5,16 @@
 //! another callback or `invoke_from_event_loop`.
 
 use std::cell::RefCell;
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
-use collage_core::MAX_IMAGES;
+use collage_core::{CoreError, ExportOptions, MAX_IMAGES, render};
 use slint::ComponentHandle;
 
 use crate::images;
 use crate::platform::{Platform, PlatformEvent};
-use crate::state::{AppState, BackOutcome, Insets};
+use crate::state::{AppState, BackOutcome, ExportAction, ExportJob, Insets};
 use crate::texts;
 use crate::ui::{AppWindow, Backend, Theme};
 use crate::view::Models;
@@ -80,10 +81,8 @@ impl Controller {
         }));
         on!(on_back_confirmed, |c| c.update(AppState::confirm_back));
         on!(on_back_cancelled, |c| c.update(AppState::cancel_back));
-        on!(on_save_requested, |c| c
-            .update(|s| s.show_notice(texts::EXPORT_UNAVAILABLE)));
-        on!(on_share_requested, |c| c
-            .update(|s| s.show_notice(texts::EXPORT_UNAVAILABLE)));
+        on!(on_save_requested, |c| c.start_export(ExportAction::Save));
+        on!(on_share_requested, |c| c.start_export(ExportAction::Share));
         on!(on_dismiss_message, |c| c.update(AppState::dismiss_message));
 
         on!(on_canvas_resized, |c, w, h| c
@@ -196,4 +195,44 @@ impl Controller {
             self.update(AppState::loading_failed);
         }
     }
+
+    /// Renders the collage in the background, then hands the JPEG to the platform. The busy overlay ends when
+    /// the render finishes; the platform's answer (`Saved`/`Shared`) arrives later as a notice.
+    fn start_export(&self, action: ExportAction) {
+        let Some(job) = self.state.borrow_mut().begin_export(action) else {
+            return;
+        };
+        self.refresh();
+
+        let action = job.action;
+        let spawned = std::thread::Builder::new()
+            .name("exporter".into())
+            .spawn(move || {
+                let result = render_job(&job);
+                post(move |controller| controller.finish_export(action, result));
+            });
+        if let Err(error) = spawned {
+            log::error!("cannot start export thread: {error}");
+            self.update(AppState::export_failed);
+        }
+    }
+
+    fn finish_export(&self, action: ExportAction, result: Result<Vec<u8>, CoreError>) {
+        let jpeg = self.state.borrow_mut().finish_export(result);
+        self.refresh();
+        if let Some(jpeg) = jpeg {
+            match action {
+                ExportAction::Save => self.platform.save_to_gallery(jpeg),
+                ExportAction::Share => self.platform.share(jpeg),
+            }
+        }
+    }
+}
+
+/// Renders on the export thread. A panic (e.g. in a decoder) becomes an error, so the busy state always ends.
+fn render_job(job: &ExportJob) -> Result<Vec<u8>, CoreError> {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
+        render(&job.collage, &job.sources, ExportOptions::default())
+    }))
+    .unwrap_or_else(|_| Err(CoreError::Encode("renderer panicked".to_owned())))
 }

@@ -75,12 +75,14 @@ Was daraus folgt:
     - [x] Emulator-Start prüfen: `emulator -accel-check`, `emulator -avd dimuli_api36`
 - [x] 2. **Workspace und collage-core** mit Unit-Tests: Baum, Vorlagen, Geometrie, Ziehen der Trennlinien, Cover-Transformation, Tauschen.
 - [x] 3. **Desktop-UI mit Slint:** Bilder laden, Editor, Trennlinien, Verschieben/Zoomen, Tauschen, Einstellungen.
-- [ ] 4. **Export-Renderer** in collage-core mit Test (Pixelvergleich am Testbild); auf dem Desktop als Datei speichern.
+- [x] 4. **Export-Renderer** in collage-core mit Test (Pixelvergleich am Testbild); auf dem Desktop als Datei speichern.
 - [ ] 5. **Android-Schale:** Gradle-Projekt, Kotlin-Activity, JNI-Bridge, Photo Picker, MediaStore, Teilen; Lauf im Emulator.
 - [ ] 6. **Feinschliff:** Lifecycle (Pause/Resume, Zustand halten), Performance mit großen Bildern, Fehlermeldungen in der UI.
     - Offene Review-Hinweise aus M3: Snapshot-Allokationen pro Zeigerereignis reduzieren (während einer Geste nur Zellen
       aktualisieren), mögliches 1-Frame-Flackern nach Formatwechsel, unnötige Pixelbuffer-Kopie beim Laden,
       `DECODE_MAX_PIXELS` für Geräte ggf. auf 64 MP senken.
+    - Offene Review-Hinweise aus M4: einige Render-Tests nutzen Ausgabegrößen über 64 px; Desktop-„Teilen“
+      rendert erst voll und meldet dann „nicht verfügbar“.
 - [ ] 7. **CLAUDE.md aktualisieren:** `cargo-apk`-Befehle durch den `cargo ndk` + Gradle-Ablauf ersetzen und die Struktur ergänzen.
 - [ ] 8. **Mehr als 9 Bilder:** Raster-Generator in `templates`, der für jede Bildanzahl ein Layout erzeugt;
   `MAX_IMAGES` anheben (Ziel: kein festes Limit, die Felder werden kleiner). Speicher und Bedienbarkeit
