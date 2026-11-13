@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/dstaehel/Documents/dev/dave/dimuli/docs/CODING_GUIDELINES.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Coding Guidelines",
+  "summary": "Binding coding rules for dimuli contributors covering layers, Rust, Slint, Kotlin/Android, tests, dependencies, docs, and git.",
+  "scope": ["collage-core", "dimuli-app", "platform layer", "Slint UI", "Kotlin MainActivity", "JNI bridge", "Rust code style", "tests", "dependencies", "documentation", "git commits"],
+  "cross_refs": ["docs/PLAN.md", "CLAUDE.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Prescriptive style and process rules, not an ADR (no Status/Decision/Consequences structure), not a PRD (no user stories or acceptance criteria), and not a SPEC (no endpoint, schema, or protocol contracts). Closest fit is DOC (guide-style, context only), but it is normative, so the synthesizer may want to treat its rules as conventions rather than context. Hash suffix could not be computed: no shell or hashing tool available to this classifier, so the file is written as CODING-GUIDELINES-NOHASH.json and must be renamed to CODING-GUIDELINES-<first 8 hex of SHA-256 of the POSIX source path>.json by the orchestrator."
+}

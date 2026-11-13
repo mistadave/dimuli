@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/dstaehel/Documents/dev/dave/dimuli/docs/PLAN.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Plan: dimuli – Collage-Maker (Rust + Slint, Android)",
+  "summary": "Project plan for the dimuli Android collage app: scope, workspace architecture, Android integration, Android version targets, and milestone checklist.",
+  "scope": ["dimuli", "collage-core crate", "dimuli-app crate", "Slint UI", "Android integration", "Photo Picker", "MediaStore", "FileProvider sharing", "Android 16/17 targets", "NDK r30", "Slint license attribution"],
+  "cross_refs": ["ARCHITECTURE.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Planning document with milestone checkboxes and rationale sections, no ADR status field and no user stories or acceptance criteria, so not ADR or PRD. Contains technical constraints (minSdk 36, targetSdk 37, NDK r30, 16 KB page alignment, cargo ndk build flow) that resemble SPEC content, but they are stated as plan rationale, not as a formal contract, so DOC chosen with medium confidence. Not locked (no Accepted status). Filename hash suffix not applied: classifier toolset has no shell to compute SHA-256 of the source path; file saved as PLAN.json."
+}

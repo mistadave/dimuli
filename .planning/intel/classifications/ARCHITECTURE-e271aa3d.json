@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/dstaehel/Documents/dev/dave/dimuli/docs/ARCHITECTURE.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Architektur",
+  "summary": "Architecture of dimuli: two crates, one AppState, one data flow, with the collage-core data model, module responsibilities, platform trait, and v1 limits and constants.",
+  "scope": ["collage-core", "dimuli-app", "AppState", "Collage data model", "LayoutNode splits", "crop", "render/export", "platform trait", "gestures", "v1 constants"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": "No frontmatter, no status field, and no ADR Context/Decision/Consequences structure. The 'Leitentscheidungen' table is a design-rationale list, not a formal ADR set. Dominant signals are Rust data models, function signatures, platform interface definitions, module tables, and a constants table, which point to SPEC. Some prose (Bildschirme, Abläufe, Bewusst nicht in v1) is DOC-like context. No links to other documents were found, so cross_refs is empty."
+}

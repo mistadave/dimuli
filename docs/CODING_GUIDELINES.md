@@ -81,7 +81,7 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 - Kotlin nur für: Activity-Lifecycle, Photo Picker, MediaStore, Teilen-Intent, Insets, Back-Callback.
 - Jede Kotlin-Funktion, die Rust aufruft oder von Rust aufgerufen wird, steht in `MainActivity.kt` im Abschnitt
   `// region JNI bridge`; Signaturen auf beiden Seiten identisch dokumentieren.
-- Keine zusätzlichen Berechtigungen im Manifest ohne Rückfrage (minSdk 36 braucht keine Speicherberechtigung).
+- Keine zusätzlichen Berechtigungen im Manifest ohne Rückfrage (minSdk 33 braucht keine Speicherberechtigung).
 - Keine AndroidX-/Drittbibliotheken ohne Rückfrage.
 
 ## 6. UI-Texte und Bedienung

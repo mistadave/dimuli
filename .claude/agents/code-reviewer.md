@@ -32,7 +32,7 @@ cargo test --workspace
 Falls `android/` oder `platform/android.rs` geändert wurde und das NDK verfügbar ist, zusätzlich:
 
 ```sh
-cargo ndk -t x86_64 --platform 36 check -p dimuli-app
+cargo ndk -t x86_64 --platform 33 check -p dimuli-app
 ```
 
 Melde fehlschlagende Befehle mit der relevanten Ausgabe. Existiert ein Befehl noch nicht (z. B. leerer Workspace),

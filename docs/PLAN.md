@@ -44,22 +44,23 @@ Details zu Modulen, Datenmodell, Datenfluss und Grenzen: [`ARCHITECTURE.md`](ARC
 ### Android-Versionen
 | Einstellung | Wert |
 |---|---|
-| `minSdk` | **36** (Android 16) |
+| `minSdk` | **33** (Android 13) |
 | `targetSdk` / `compileSdk` | 37 (Android 17, neueste stabile API-Stufe) |
 | NDK | r30 (`30.0.16248370`) |
-| Rust-Build | `cargo ndk --platform 36 …` |
+| Rust-Build | `cargo ndk --platform 33 …` |
 
 Was daraus folgt:
-- Photo Picker, MediaStore ohne Speicherberechtigung und `FileProvider`-Teilen sind auf allen Zielgeräten vorhanden.
-  Fallbacks für ältere Versionen sind nicht nötig.
-- **Edge-to-Edge ist ab Android 15 Pflicht:** Die App zeichnet unter Status- und Navigationsleiste.
+- Photo Picker (`MediaStore.ACTION_PICK_IMAGES`, ab API 33 im System), MediaStore ohne Speicherberechtigung (ab API 29)
+  und `FileProvider`-Teilen sind auf allen Zielgeräten vorhanden. Fallbacks für ältere Versionen sind nicht nötig.
+- **Edge-to-Edge auf allen Versionen:** Ab Android 15 ist es Pflicht; auf Android 13/14 schaltet die App es selbst ein,
+  damit sie überall gleich aussieht. Die App zeichnet unter Status- und Navigationsleiste.
   Kotlin liest die System-Insets aus (`WindowInsets`) und gibt sie per JNI an Rust weiter. Die Slint-UI
   rückt ihre Inhalte entsprechend ein (`safe-area`-Properties).
 - **16-KB-Speicherseiten:** Native Bibliotheken müssen 16-KB-aligned sein (Pflicht bei Google Play, ab Android 15
   auf Geräten möglich). NDK r28+ erledigt das standardmäßig; geprüft wird es mit `zipalign -c -P 16` bzw. im APK-Analyzer.
-- **Predictive Back:** In der Kotlin-Activity wird der Zurück-Callback (`OnBackPressedCallback`/`OnBackInvokedCallback`)
-  an Rust weitergereicht: Im Editor geht es zurück zur Startansicht, auf der Startansicht wird die App geschlossen.
-- Emulator-Image: Android 16 (API 36) x86_64; zusätzlich ein Image der neuesten Version für den Test „bis latest“.
+- **Predictive Back:** In der Kotlin-Activity wird der Zurück-Callback (`OnBackInvokedCallback`, ab API 33; im Manifest
+  `android:enableOnBackInvokedCallback="true"`) an Rust weitergereicht: Im Editor geht es zurück zur Startansicht, auf der Startansicht wird die App geschlossen.
+- Emulator-Images (x86_64): Android 13 (API 33) als Minimum, Android 16 (API 36) und die neueste Version (API 37) für den Test „bis latest“.
 
 ## Umsetzung in Meilensteinen
 
@@ -76,7 +77,8 @@ Was daraus folgt:
 - [x] 2. **Workspace und collage-core** mit Unit-Tests: Baum, Vorlagen, Geometrie, Ziehen der Trennlinien, Cover-Transformation, Tauschen.
 - [x] 3. **Desktop-UI mit Slint:** Bilder laden, Editor, Trennlinien, Verschieben/Zoomen, Tauschen, Einstellungen.
 - [x] 4. **Export-Renderer** in collage-core mit Test (Pixelvergleich am Testbild); auf dem Desktop als Datei speichern.
-- [ ] 5. **Android-Schale:** Gradle-Projekt, Kotlin-Activity, JNI-Bridge, Photo Picker, MediaStore, Teilen; Lauf im Emulator.
+- [ ] 5. **Android-Schale:** Gradle-Projekt, Kotlin-Activity, JNI-Bridge, Photo Picker, MediaStore, Teilen; Lauf im Emulator
+  (API 33, 36, 37; neues AVD `dimuli_api33`) und auf echten Geräten mit Android 14 und Android 16.
 - [ ] 6. **Feinschliff:** Lifecycle (Pause/Resume, Zustand halten), Performance mit großen Bildern, Fehlermeldungen in der UI.
     - Offene Review-Hinweise aus M3: Snapshot-Allokationen pro Zeigerereignis reduzieren (während einer Geste nur Zellen
       aktualisieren), mögliches 1-Frame-Flackern nach Formatwechsel, unnötige Pixelbuffer-Kopie beim Laden,
@@ -103,7 +105,7 @@ dimuli nutzt Slint unter der **Slint Royalty-free License 2.0**. Bedingung: Die 
   Cover-Begrenzung, Export-Pixeltest.
 - `cargo run -p dimuli-app`: kompletter Ablauf auf dem Desktop (Bilder wählen, anordnen, exportieren, Datei öffnen).
 - `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`.
-- Emulator (API 36 und neueste API): APK mit `adb install` installieren und durchspielen. Zusätzlich prüfen: Inhalte
+- Emulator (API 33, API 36 und neueste API 37): APK mit `adb install` installieren und durchspielen. Zusätzlich prüfen: Inhalte
   werden nicht von System-Leisten verdeckt, Zurück-Geste funktioniert, 16-KB-Alignment besteht. Ablauf: Photo Picker mit 3–5 Bildern, Trennlinien ziehen,
   zoomen, tauschen, in die Galerie speichern (in Google Fotos prüfen), Teilen-Dialog öffnen,
   App pausieren und fortsetzen. Logs mit `adb logcat -s dimuli`.

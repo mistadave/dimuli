@@ -8,8 +8,8 @@ und als ein Bild exportiert.
 - **Sprache:** Rust (stable)
 - **UI:** [Slint](https://slint.dev) mit dem Android-Backend (`backend-android-activity`); UI-Dateien unter `ui/*.slint`
 - **Build:** `cargo-apk`, Android SDK + NDK (`ANDROID_HOME`, `ANDROID_NDK_HOME` müssen gesetzt sein)
-- **Android:** minSdk 36 (Android 16), targetSdk 37 (Android 17), NDK r30; ABIs `arm64-v8a` und `x86_64` (Emulator)
-- **Entwicklung:** komplett in WSL2; Emulator-AVDs `dimuli_api36` und `dimuli_api37` (Start: `emulator -avd dimuli_api36`)
+- **Android:** minSdk 33 (Android 13), targetSdk 37 (Android 17), NDK r30; ABIs `arm64-v8a` und `x86_64` (Emulator)
+- **Entwicklung:** komplett in WSL2; Emulator-AVDs `dimuli_api33`, `dimuli_api36` und `dimuli_api37` (Start: `emulator -avd dimuli_api36`)
 
 **Plan und Fortschritt:** [`docs/PLAN.md`](docs/PLAN.md). Dort stehen Meilensteine und Android-Setup;
 erledigte Meilensteine werden dort abgehakt.
