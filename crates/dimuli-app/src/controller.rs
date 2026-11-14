@@ -14,8 +14,7 @@ use slint::ComponentHandle;
 
 use crate::images;
 use crate::platform::{Platform, PlatformEvent};
-use crate::state::{AppState, BackOutcome, ExportAction, ExportJob, Insets};
-use crate::texts;
+use crate::state::{AppState, BackOutcome, ExportAction, ExportJob};
 use crate::ui::{AppWindow, Backend, Theme};
 use crate::view::Models;
 
@@ -137,37 +136,14 @@ impl Controller {
                 log::error!("picking images failed: {message}");
                 self.update(|s| s.show_error(message));
             }
-            PlatformEvent::Saved(result) => self.show_result(result, texts::SAVED),
-            PlatformEvent::Shared(result) => self.show_result(result, texts::SHARED),
-            PlatformEvent::InsetsChanged {
-                top,
-                bottom,
-                left,
-                right,
-            } => self.update(|s| {
-                s.set_insets(Insets {
-                    top,
-                    bottom,
-                    left,
-                    right,
-                })
-            }),
+            PlatformEvent::Saved(result) => self.update(|s| s.save_finished(result)),
+            PlatformEvent::Shared(result) => self.update(|s| s.share_finished(result)),
             PlatformEvent::BackPressed => {
                 let outcome = self.state.borrow_mut().request_back();
                 self.refresh();
                 if outcome == BackOutcome::NotHandled {
                     self.platform.close_app();
                 }
-            }
-        }
-    }
-
-    fn show_result(&self, result: Result<(), String>, success: &'static str) {
-        match result {
-            Ok(()) => self.update(|s| s.show_notice(success)),
-            Err(message) => {
-                log::error!("platform action failed: {message}");
-                self.update(|s| s.show_error(message));
             }
         }
     }
@@ -197,7 +173,8 @@ impl Controller {
     }
 
     /// Renders the collage in the background, then hands the JPEG to the platform. The busy overlay ends when
-    /// the render finishes; the platform's answer (`Saved`/`Shared`) arrives later as a notice.
+    /// the render finishes; the platform's answer arrives later: `Saved` shows a notice, `Shared` only
+    /// shows a message on failure (D-11).
     fn start_export(&self, action: ExportAction) {
         let Some(job) = self.state.borrow_mut().begin_export(action) else {
             return;

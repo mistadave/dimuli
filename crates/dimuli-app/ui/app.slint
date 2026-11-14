@@ -1,3 +1,4 @@
+import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Backend } from "backend.slint";
 import { Screen } from "types.slint";
@@ -17,19 +18,25 @@ export component AppWindow inherits Window {
     min-width: Theme.window-min-width;
     min-height: Theme.window-min-height;
 
-    // Content is inset by the safe area (system bars, display cutout).
+    // The app is always dark; std widgets (AboutSlint) pick their text and logo colours from this.
+    init => {
+        Palette.color-scheme = ColorScheme.dark;
+    }
+
+    // Content is inset by the safe area (system bars, display cutout); Slint fills it, 0 on desktop.
     Rectangle {
-        x: Backend.inset-left;
-        y: Backend.inset-top;
-        width: parent.width - Backend.inset-left - Backend.inset-right;
-        height: parent.height - Backend.inset-top - Backend.inset-bottom;
+        x: root.safe-area-insets.left;
+        y: root.safe-area-insets.top;
+        width: max(0px, parent.width - root.safe-area-insets.left - root.safe-area-insets.right);
+        height: max(0px, parent.height - root.safe-area-insets.top - root.safe-area-insets.bottom);
 
         if Backend.screen == Screen.start: StartScreen { }
         if Backend.screen == Screen.editor: EditorScreen { }
 
         MessageBanner {
             x: Theme.spacing-s;
-            y: Theme.spacing-s;
+            // Below the top bar so Zurück/Speichern/Teilen stay reachable while a message is shown.
+            y: Theme.touch-target + 3 * Theme.spacing-s;
             width: parent.width - 2 * Theme.spacing-s;
         }
         BusyOverlay { }

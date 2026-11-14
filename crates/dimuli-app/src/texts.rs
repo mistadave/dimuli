@@ -11,9 +11,15 @@ pub(crate) const EXPORT_SOURCE_UNREADABLE: &str = "Ein Bild der Collage konnte n
 pub(crate) const NO_IMAGE_ARGUMENTS: &str = "Keine Bilder angegeben. Starte die App mit Dateipfaden, z. B.: cargo run -p dimuli-app -- a.jpg b.png";
 pub(crate) const SAVE_FAILED: &str =
     "Die Collage konnte nicht gespeichert werden. Bitte versuche es noch einmal.";
+// Only used by the Android platform (and its host tests) until the desktop needs them.
+#[cfg(any(target_os = "android", test))]
+pub(crate) const PICK_FAILED: &str =
+    "Die Bildauswahl konnte nicht geöffnet werden. Bitte versuche es noch einmal.";
+#[cfg(any(target_os = "android", test))]
+pub(crate) const SHARE_FAILED: &str =
+    "Die Collage konnte nicht geteilt werden. Bitte versuche es noch einmal.";
 pub(crate) const SHARE_UNAVAILABLE: &str = "Teilen ist auf diesem Gerät nicht verfügbar.";
 pub(crate) const SAVED: &str = "Collage gespeichert.";
-pub(crate) const SHARED: &str = "Collage geteilt.";
 
 /// Notice after some of the chosen files could not be read.
 pub(crate) fn images_skipped(count: usize) -> String {

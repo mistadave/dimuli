@@ -280,7 +280,6 @@ pub(crate) struct Snapshot {
     busy_text: &'static str,
     message: Option<(String, bool)>,
     confirm_back: bool,
-    insets: [f32; 4],
     cells: Vec<CellView>,
     dividers: Vec<DividerView>,
     /// Set only when the template list changed.
@@ -364,12 +363,6 @@ impl Models {
                 .as_ref()
                 .map(|m| (m.text.clone(), m.kind == MessageKind::Error)),
             confirm_back: state.confirm_back,
-            insets: [
-                state.insets.top,
-                state.insets.bottom,
-                state.insets.left,
-                state.insets.right,
-            ],
             cells,
             dividers,
             templates: templates_changed.then(|| {
@@ -422,11 +415,6 @@ impl Models {
         );
         backend.set_message_is_error(snapshot.message.as_ref().is_some_and(|m| m.1));
         backend.set_confirm_back_visible(snapshot.confirm_back);
-        let [top, bottom, left, right] = snapshot.insets;
-        backend.set_inset_top(top);
-        backend.set_inset_bottom(bottom);
-        backend.set_inset_left(left);
-        backend.set_inset_right(right);
         backend.set_active_template(snapshot.active_template);
         backend.set_canvas_aspect(snapshot.canvas_aspect);
         backend.set_collage_background(snapshot.background);

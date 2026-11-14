@@ -78,15 +78,15 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. With fingers on the touchscreen, user can drag dividers, pinch-zoom and pan an image, swap images by long-press, switch templates and change settings
   4. "Speichern" puts the collage into `Pictures/dimuli` without any permission prompt and it shows up in the gallery app (Google Photos); "Teilen" opens the system share sheet with the JPEG
   5. System bars never cover content (edge-to-edge also on Android 13/14), the back gesture asks for confirmation in the editor and returns to the start screen (and closes the app from there), and the native library passes the 16 KB alignment check (`zipalign -c -P 16`)
-**Plans**: 8 plans
+**Plans**: 6/8 plans executed
 
 Plans:
-- [ ] 05-01-PLAN.md — Rust preparation: approved crates, lib name `dimuli`, Slint Android feature, scoped JNI lint exception, android_main + back-native skeleton; own inset path removed (D-13), Slint safe-area insets; host gates + cargo ndk build/clippy
-- [ ] 05-02-PLAN.md — Tracer: Gradle project + wrapper, Kotlin MainActivity, manifest, back JNI round trip, smoke.sh; APK launches on dimuli_api36, back closes; insets + rotation checked
-- [ ] 05-03-PLAN.md — Photo Picker slice: ACTION_PICK_IMAGES, cache copy, nativeImagesPicked; cancel/single/failure; editor back confirm
-- [ ] 05-04-PLAN.md — Save (MediaStore Pictures/dimuli) and share (own ShareProvider + chooser, no success message)
-- [ ] 05-05-PLAN.md — UI pass: landscape editor layout, settings chevron, readable Slint attribution, adaptive launcher icon
-- [ ] 05-06-PLAN.md — Emulator gate: AVD dimuli_api33, 16 KB / permission check script, full flow matrix on API 33 and 37
+- [x] 05-01-PLAN.md — Rust preparation: approved crates, lib name `dimuli`, Slint Android feature, scoped JNI lint exception, android_main + back-native skeleton; own inset path removed (D-13), Slint safe-area insets; host gates + cargo ndk build/clippy
+- [x] 05-02-PLAN.md — Tracer: Gradle project + wrapper, Kotlin MainActivity, manifest, back JNI round trip, smoke.sh; APK launches on dimuli_api36, back closes; insets + rotation checked
+- [x] 05-03-PLAN.md — Photo Picker slice: ACTION_PICK_IMAGES, cache copy, nativeImagesPicked; cancel/single/failure; editor back confirm
+- [x] 05-04-PLAN.md — Save (MediaStore Pictures/dimuli) and share (own ShareProvider + chooser, no success message)
+- [x] 05-05-PLAN.md — UI pass: landscape editor layout, settings chevron, readable Slint attribution, adaptive launcher icon
+- [x] 05-06-PLAN.md — Emulator gate: AVD dimuli_api33, 16 KB / permission check script, full flow matrix on API 33 and 37
 - [ ] 05-07-PLAN.md — Real devices Android 14 + 16: connect (owner), install + smoke, finger tests (owner)
 - [ ] 05-08-PLAN.md — Milestone close: code review + critical fixes, design docs updated, milestone 5 ticked
 **UI hint**: yes
@@ -136,7 +136,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Workspace and Layout Engine | n/a (pre-GSD) | Complete | 2026-11-13 |
 | 3. Desktop Editor | n/a (pre-GSD) | Complete | 2026-11-13 |
 | 4. Export Renderer | n/a (pre-GSD) | Complete | 2026-11-13 |
-| 5. Android Shell | 0/7 | Planned | - |
+| 5. Android Shell | 6/8 | In Progress | - |
 | 6. Polish and v1 Acceptance | 0/TBD | Not started | - |
 | 7. Developer Docs for the Android Build | 0/TBD | Not started | - |
 | 8. More Than 9 Images | 0/TBD | Not started | - |

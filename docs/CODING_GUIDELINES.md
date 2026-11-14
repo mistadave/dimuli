@@ -17,7 +17,7 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 |---|---|---|
 | `crates/collage-core` | Layout-Baum, Vorlagen, Geometrie, Transformationen, Export-Renderer | nur reine Rust-Crates (kein Slint, kein JNI) |
 | `crates/dimuli-app/src` | App-Zustand, Verbindung Core ↔ UI | `collage-core`, `slint` |
-| `crates/dimuli-app/src/platform` | Bildauswahl, Speichern, Teilen, Insets, Back | Plattform-APIs (JNI; Desktop: Kommandozeilen-Argumente, Dateisystem) |
+| `crates/dimuli-app/src/platform` | Bildauswahl, Speichern, Teilen, Back (Insets liefert Slint) | Plattform-APIs (JNI; Desktop: Kommandozeilen-Argumente, Dateisystem) |
 | `crates/dimuli-app/ui` | `.slint`-Dateien: nur Darstellung und Gesten-Events | – |
 | `android/` | Kotlin-Activity, Manifest, Gradle | – |
 
@@ -53,14 +53,20 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 
 ### unsafe und FFI
 - `unsafe` nur in `platform/android.rs` (JNI). Jeder `unsafe`-Block bekommt einen `// SAFETY:`-Kommentar.
-- **Einzige Ausnahme für `#[allow]` auf Lints:** das Modul `ui` in `dimuli-app/src/lib.rs`, das den von
-  `slint::include_modules!()` generierten Code einbindet. Generierter Code ist nicht änderbar; handgeschriebener Code
-  bleibt voll gelintet. Das `allow` enthält nur die Lints, die der generierte Code wirklich verletzt.
-- Native JNI-Einstiegspunkte (`extern "system" fn Java_...`) fangen Panics mit `std::panic::catch_unwind` ab,
-  bevor sie die Grenze erreichen.
-- Aufrufe aus Kotlin-Callbacks nie direkt auf UI-Objekte zugreifen lassen: immer über
-  `slint::invoke_from_event_loop` in den UI-Thread wechseln.
-- JNI-Referenzen nicht über den Aufruf hinaus halten (lokale Referenzen); für langlebige Objekte `GlobalRef`.
+- **Ausnahmen für `#[allow]` auf Lints (nur diese zwei):**
+  1. das Modul `ui` in `dimuli-app/src/lib.rs`, das den von `slint::include_modules!()` generierten Code einbindet.
+     Generierter Code ist nicht änderbar; handgeschriebener Code bleibt voll gelintet. Das `allow` enthält nur die
+     Lints, die der generierte Code wirklich verletzt.
+  2. `crates/dimuli-app/src/platform/android.rs` trägt `#![allow(unsafe_code)]` (JNI braucht `unsafe`) und
+     `#[allow(deprecated)]` allein auf der Konstante `NATIVES` (die Makro-Expansion von `jni` 0.22.4 ruft das
+     veraltete `AtomicBool::fetch_update` auf). Alles andere handgeschriebene Code bleibt voll gelintet;
+     `clippy::undocumented_unsafe_blocks` ist auf `deny` gesetzt.
+- Native JNI-Einstiegspunkte nur mit `jni::native_method!` deklarieren (fängt Panics per `catch_unwind` ab,
+  Fehlerpolitik `LogErrorAndDefault`) und per `RegisterNatives` registrieren; keine `extern "system" fn Java_...`.
+- Aufrufe aus Kotlin-Callbacks nie direkt auf UI-Objekte zugreifen lassen: Natives rufen nur
+  `platform::post_event` auf, das über `slint::invoke_from_event_loop` in den UI-Thread wechselt.
+- JNI-Referenzen nicht über den Aufruf hinaus halten (lokale Referenzen); für langlebige Objekte `jni::refs::Global`
+  (jni 0.22). `AndroidApp` und die Activity nie in einem `static` halten.
 
 ### Performance und Speicher
 - Bilder nie mehrfach in voller Auflösung im Speicher halten. UI arbeitet mit Vorschaubildern (max. 2048 px Kante).
@@ -74,11 +80,12 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
   Aktionen gehen als `callback` zurück (`callback divider-moved(int, length)`).
 - Farben, Abstände und Schriftgrößen zentral in `ui/theme.slint` (`global Theme`), keine Magic Numbers in Komponenten.
 - Touch-Ziele mindestens 48 px (Android-Richtlinie).
-- Safe-Area-Insets (Edge-to-Edge) immer berücksichtigen: Inhalte über die `safe-area`-Properties einrücken.
+- Safe-Area-Insets (Edge-to-Edge) immer berücksichtigen: Inhalte über `Window.safe-area-insets` einrücken.
 
 ## 5. Kotlin / Android
 
-- Kotlin nur für: Activity-Lifecycle, Photo Picker, MediaStore, Teilen-Intent, Insets, Back-Callback.
+- Kotlin nur für: Activity-Lifecycle, Photo Picker, MediaStore, Teilen-Intent, Edge-to-Edge auf Android 13/14,
+  Back-Callback. `ShareProvider.kt` ist die einzige Kotlin-Datei neben `MainActivity.kt` und enthält kein JNI.
 - Jede Kotlin-Funktion, die Rust aufruft oder von Rust aufgerufen wird, steht in `MainActivity.kt` im Abschnitt
   `// region JNI bridge`; Signaturen auf beiden Seiten identisch dokumentieren.
 - Keine zusätzlichen Berechtigungen im Manifest ohne Rückfrage (minSdk 33 braucht keine Speicherberechtigung).

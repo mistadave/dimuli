@@ -8,6 +8,7 @@ publish.workspace = true
 build = "build.rs"
 
 [lib]
+name = "dimuli"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
@@ -22,6 +23,11 @@ log.workspace = true
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 env_logger.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+slint = { workspace = true, features = ["backend-android-activity-06"] }
+jni.workspace = true
+android_logger.workspace = true
 
 [build-dependencies]
 slint-build.workspace = true

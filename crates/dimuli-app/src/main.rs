@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::rc::Rc;
 
-use dimuli_app::platform::DesktopPlatform;
+use dimuli::platform::DesktopPlatform;
 
 fn main() -> ExitCode {
     // The Android build uses the library entry point; the bin only needs to compile there.
@@ -13,7 +13,7 @@ fn main() -> ExitCode {
     #[cfg(not(target_os = "android"))]
     select_desktop_backend();
     let paths: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
-    match dimuli_app::run(Rc::new(DesktopPlatform::new(paths))) {
+    match dimuli::run(Rc::new(DesktopPlatform::new(paths))) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             log::error!("UI failed: {error}");

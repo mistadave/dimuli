@@ -18,7 +18,7 @@ Problem sie verlangt.
          │                                                   ▼
    Kotlin-Activity                                  collage-core (reine Logik)
    (Photo Picker, MediaStore, Teilen,               Layout, Geometrie, Zuschnitt,
-    Insets, Zurück-Geste)                           Export-Renderer
+    Edge-to-Edge, Zurück-Geste)                     Export-Renderer
 ```
 
 ## Leitentscheidungen
@@ -104,16 +104,18 @@ pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -
 
 | Datei | Aufgabe |
 |---|---|
-| `lib.rs` | `run(platform)`: UI erstellen, Controller verdrahten; `android_main` ruft `run` mit `AndroidPlatform` |
+| `lib.rs` | `run(platform)`: UI erstellen, Controller verdrahten |
 | `main.rs` | Desktop-Einstieg: `run(DesktopPlatform)`; wählt standardmäßig winit mit Software-Renderer (WSLg-OpenGL-Problem), `SLINT_BACKEND` überschreibt das |
-| `state.rs` | `AppState { screen, collage, images, busy: Option<Busy>, message, templates, canvas, insets, confirm_back, gesture }` samt allen Zustandsübergängen (Gesten-Zustandsmaschine `Gesture`, Laden, Export, Zurück, Stil); reines Rust, ohne Fenster testbar |
+| `state.rs` | `AppState { screen, collage, images, busy: Option<Busy>, message, templates, canvas, confirm_back, gesture }` samt allen Zustandsübergängen (Gesten-Zustandsmaschine `Gesture`, Laden, Export, Zurück, Stil); reines Rust, ohne Fenster testbar |
 | `images.rs` | Laden im Hintergrund-Thread (Dekodieren über `collage_core::decode_unoriented`, danach Vorschau ≤ `PREVIEW_MAX_EDGE` verkleinern und orientieren; Fehler sind `CoreError`); `ImageStore`: `ImageId → { path, preview: slint::Image, preview_size }`, `sources(&Collage)` liefert die `ImageSource`s für den Export |
 | `controller.rs` | Dünn: verbindet UI-Callbacks und `PlatformEvent`s mit `AppState`-Übergängen und stößt danach `refresh` an; `post()` bringt Aktionen aus anderen Threads in den UI-Thread (Controller per `thread_local` auffindbar) |
 | `view.rs` | Reine Umrechnung Collage-Einheiten ↔ Pixel (1.0 = Canvas-Breite in px), `source-clip-*`, Trennlinien-Touchflächen (≥ 48 px), Wheel-Zoom; `Models::snapshot/apply` schreibt `CellView`/`DividerView`/`TemplateView` in die Slint-Models (nur geänderte Zeilen) |
 | `texts.rs` | Vom Rust-Code erzeugte deutsche Meldungen (Texte der `.slint`-Dateien: `ui/texts.slint`) |
 | `ui/` | `app.slint` (Einstieg), `backend.slint` (`global Backend`: alle Properties/Callbacks zwischen UI und Rust), `theme.slint`, `texts.slint`, `types.slint` (Structs), je eine Komponente pro Datei |
 | `platform/mod.rs` | `trait Platform`, `enum PlatformEvent`, `post_event()` |
-| `platform/desktop.rs`, `platform/android.rs` | Implementierungen |
+| `platform/desktop.rs` | `DesktopPlatform` |
+| `platform/android.rs` | `android_main` (`#[unsafe(no_mangle)]`, ruft `run` mit `AndroidPlatform`), `AndroidPlatform` (JNI-Aufrufe in `MainActivity`), JNI-Natives per `native_method!` + `RegisterNatives`; einzige Datei mit `unsafe` |
+| `platform/native_events.rs` | Reine Abbildung der Kotlin-Ergebnisse auf `PlatformEvent`s, auf dem Host getestet |
 
 ### Plattform-Schnittstelle
 
@@ -130,15 +132,23 @@ pub enum PlatformEvent {
     PickFailed(String),                                // Meldung für den Benutzer (z. B. Desktop ohne Argumente)
     Saved(Result<(), String>),
     Shared(Result<(), String>),
-    InsetsChanged { top: f32, bottom: f32, left: f32, right: f32 },
     BackPressed,
 }
 ```
+
+Safe-Area-Insets (Systemleisten, Display-Ausschnitt) liefert Slint selbst als `Window.safe-area-insets`; `ui/app.slint` rückt den Inhalt
+damit ein (Desktop: 0), die Plattform meldet keine Insets.
 
 Desktop (`DesktopPlatform`): `pick_images` liefert die beim Start übergebenen Pfade (`cargo run -p dimuli-app -- a.jpg b.jpg`,
 alle Pfade; der Controller kürzt auf `MAX_IMAGES` und zeigt den Hinweis; ohne Argumente `PickFailed`). `max` ist nur ein Hinweis.
 `close_app` beendet auf dem Desktop die Slint-Event-Loop. `save_to_gallery` schreibt `dimuli-<Unix-Sekunden>.jpg` ins Arbeitsverzeichnis
 (nie überschreibend: bei Kollision `-1`, `-2`, …; der volle Pfad wird geloggt); `share` meldet „nicht verfügbar“.
+
+Android (`AndroidPlatform`): `pick_images` öffnet den System-Photo-Picker (`ACTION_PICK_IMAGES`, höchstens `max` Bilder);
+Kotlin kopiert die Auswahl nach `cacheDir/picked/img-<n>` (wird beim nächsten Auswählen bzw. Start gelöscht).
+`save_to_gallery` schreibt per MediaStore nach `Pictures/dimuli` (`IS_PENDING`, keine Berechtigung).
+`share` schreibt `cacheDir/share/dimuli-collage.jpg` und öffnet über den eigenen `ShareProvider` den Chooser;
+`Shared(Ok)` zeigt keine Meldung. `close_app` ruft `Activity.finish()` auf.
 
 Die Plattform liefert Ergebnisse mit `platform::post_event(event)` (beliebiger Thread); das nutzt
 `invoke_from_event_loop` und findet den Controller über ein `thread_local`.
@@ -177,7 +187,7 @@ Bildgröße + erzeugt Vorschaubild → Controller erstellt `Collage` mit erster 
 
 **Exportieren:** `AppState::begin_export` (nur im Editor und wenn nicht `busy`) setzt `busy = Exporting`, beendet laufende Gesten und liefert einen `ExportJob` (geklonte `Collage` + `ImageSource`s aus dem `ImageStore`) →
 Thread `exporter`: `render()` (Panic wird per `catch_unwind` zum Fehler) → `post` → `AppState::finish_export` beendet `busy` (Ende des Ladezustands ist das Render-Ende, nicht die Antwort der Plattform) →
-bei Erfolg `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shared` → Meldung; bei Fehler wird der `CoreError` geloggt und eine deutsche Meldung gezeigt
+bei Erfolg `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shared` → Meldung (Teilen zeigt bei Erfolg keine Meldung, D-11); bei Fehler wird der `CoreError` geloggt und eine deutsche Meldung gezeigt
 (Quellbild fehlt/unlesbar vs. allgemein). Während des Exports schluckt das Overlay alle Eingaben und die Zurück-Geste ist `Handled` (ohne Wirkung).
 
 ## Grenzen und Konstanten (v1)

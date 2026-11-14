@@ -6,11 +6,42 @@ import { CollageCanvas } from "collage-canvas.slint";
 import { TemplateBar } from "template-bar.slint";
 import { SettingsPanel } from "settings-panel.slint";
 
-export component EditorScreen inherits Rectangle {
-    // Presentation-only state: whether the settings panel is expanded.
-    property <bool> settings-open: false;
+// Toggle for the settings panel. The chevron is drawn because the Android system font
+// has no glyph for the arrow characters.
+component SettingsToggle inherits Rectangle {
+    in-out property <bool> open;
 
-    VerticalLayout {
+    min-height: Theme.touch-target;
+    max-height: Theme.touch-target;
+
+    AppButton {
+        text: Texts.settings;
+        clicked => {
+            root.open = !root.open;
+        }
+        // Up while the panel is closed, down while it is open.
+        Path {
+            x: parent.width - self.width - Theme.spacing-m;
+            y: (parent.height - self.height) / 2;
+            width: Theme.chevron-size;
+            height: Theme.chevron-size * 10 / 12;
+            viewbox-width: 12;
+            viewbox-height: 10;
+            commands: root.open ? "M 0 2 L 6 8 L 12 2" : "M 0 8 L 6 2 L 12 8";
+            stroke: Theme.on-surface;
+            stroke-width: Theme.border-medium;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+        }
+    }
+}
+
+export component EditorScreen inherits Rectangle {
+    // Presentation-only state: whether the settings panel is expanded. Lives here so it survives rotation.
+    property <bool> settings-open: false;
+    property <bool> landscape: root.width > root.height;
+
+    if !root.landscape: VerticalLayout {
         TopBar { }
         CollageCanvas {
             vertical-stretch: 1;
@@ -24,12 +55,48 @@ export component EditorScreen inherits Rectangle {
             horizontal-alignment: center;
         }
         TemplateBar { }
-        AppButton {
-            text: Texts.settings + (root.settings-open ? " ▾" : " ▴");
-            clicked => {
-                root.settings-open = !root.settings-open;
-            }
+        SettingsToggle {
+            open <=> root.settings-open;
         }
         if root.settings-open: SettingsPanel { }
+    }
+
+    // Landscape: canvas beside a scrollable side panel; no hint line (too little height).
+    // Positioned explicitly instead of with a VerticalLayout: a layout only gave the body its minimum height here.
+    if root.landscape: Rectangle {
+        top-bar := TopBar {
+            y: 0px;
+            width: parent.width;
+        }
+        Rectangle {
+            y: top-bar.height;
+            width: parent.width;
+            height: max(0px, parent.height - top-bar.height);
+            HorizontalLayout {
+                CollageCanvas {
+                    horizontal-stretch: 1;
+                    min-height: Theme.canvas-min-height;
+                }
+                Rectangle {
+                    width: Theme.side-panel-width;
+                    background: Theme.surface;
+                    clip: true;
+                    // Content width is pinned to the viewport: otherwise the horizontally
+                    // scrolling template bar widens the column beyond the panel.
+                    panel := Flickable {
+                        content-width: self.width;
+                        content-height: column.preferred-height;
+                        column := VerticalLayout {
+                            width: panel.width;
+                            TemplateBar { }
+                            SettingsToggle {
+                                open <=> root.settings-open;
+                            }
+                            if root.settings-open: SettingsPanel { }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

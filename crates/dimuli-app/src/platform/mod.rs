@@ -1,9 +1,13 @@
-//! The boundary to the operating system: image picking, saving, sharing, insets and the back gesture.
+//! The boundary to the operating system: image picking, saving, sharing and the back gesture.
 //!
 //! Everything platform-specific lives behind [`Platform`]; results come back asynchronously as
 //! [`PlatformEvent`]s in the UI thread. `cfg(target_os = "android")` code belongs in this directory only.
 
+#[cfg(target_os = "android")]
+mod android;
 mod desktop;
+#[cfg(any(target_os = "android", test))]
+mod native_events;
 
 use std::path::PathBuf;
 
@@ -34,17 +38,6 @@ pub enum PlatformEvent {
     Saved(Result<(), String>),
     /// Result of sharing; the error is a message for the user.
     Shared(Result<(), String>),
-    /// New safe-area insets in logical pixels.
-    InsetsChanged {
-        /// Top inset.
-        top: f32,
-        /// Bottom inset.
-        bottom: f32,
-        /// Left inset.
-        left: f32,
-        /// Right inset.
-        right: f32,
-    },
     /// The system back button or gesture was used.
     BackPressed,
 }

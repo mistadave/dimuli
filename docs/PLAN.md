@@ -23,8 +23,8 @@ dimuli/
 │   ├── collage-core/          # reine Logik, keine UI-/Android-Abhängigkeit, voll testbar
 │   └── dimuli-app/            # Slint-UI + Plattform-Schicht; lib (cdylib für Android) + bin (Desktop)
 │       ├── ui/*.slint
-│       └── src/platform/{mod.rs, desktop.rs, android.rs}
-└── android/                   # Gradle-Projekt: Manifest, Kotlin-Activity, FileProvider
+│       └── src/platform/{mod.rs, desktop.rs, android.rs, native_events.rs}
+└── android/                   # Gradle-Projekt: Manifest, Kotlin-Activity, ShareProvider, scripts/
 ```
 
 Details zu Modulen, Datenmodell, Datenfluss und Grenzen: [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -32,13 +32,20 @@ Details zu Modulen, Datenmodell, Datenfluss und Grenzen: [`ARCHITECTURE.md`](ARC
 ### Android-Integration
 `cargo-apk` reicht hier nicht: Bildauswahl und Teilen brauchen `onActivityResult` bzw. Intents, und
 `NativeActivity` leitet diese nicht an nativen Code weiter. Deshalb:
-- Gradle-Projekt mit `MainActivity : NativeActivity` in Kotlin. Slint läuft über `backend-android-activity`
-  (Feature `native-activity`).
-- **Bildauswahl:** Photo Picker (`PickMultipleVisualMedia`). Kotlin kopiert die ausgewählten URIs ins Cache-Verzeichnis
-  und ruft die native Funktion `onImagesPicked(paths)` auf. Rust übernimmt den Rest.
-- **Speichern:** `MediaStore.Images` (`Pictures/dimuli`), ab API 29 ohne Speicherberechtigung.
-- **Teilen:** Datei im Cache, `FileProvider` und `ACTION_SEND`.
-- **Build:** `cargo ndk` legt `libdimuli.so` unter `android/app/src/main/jniLibs/` ab, Gradle baut daraus die APK.
+- Gradle-Projekt mit `MainActivity : NativeActivity` in Kotlin. Slint läuft über das Feature
+  `backend-android-activity-06` (`native-activity`).
+- **Bildauswahl:** System-Photo-Picker über `MediaStore.ACTION_PICK_IMAGES` und `onActivityResult`
+  (`NativeActivity` ist keine AndroidX-`ComponentActivity`, daher kein Activity-Result-Contract). Kotlin kopiert die
+  ausgewählten URIs nach `cacheDir/picked/img-<n>` und ruft `nativeImagesPicked(paths)` auf; die nativen Funktionen
+  registriert Rust per `RegisterNatives`. Rust übernimmt den Rest.
+- **Speichern:** `MediaStore.Images` (`Pictures/dimuli`) mit `IS_PENDING`, ab API 29 ohne Speicherberechtigung.
+- **Teilen:** Datei in `cacheDir/share`, eigener `ShareProvider` (ContentProvider ohne AndroidX) und `ACTION_SEND`
+  mit Chooser. Erfolgreiches Teilen zeigt keine Meldung, nur Fehler.
+- **Build:** Der Gradle-Task `buildRust` ruft `cargo ndk --platform 33 … build -p dimuli-app --lib --release` auf und legt
+  `libdimuli.so` unter `android/app/src/main/jniLibs/` ab; Gradle baut daraus die APK. Er setzt
+  `ANDROID_JAR=$ANDROID_HOME/platforms/android-37.0/android.jar`, sonst sucht Slints Build-Skript `platforms/android-33`.
+  `-PrustAbis=x86_64` baut nur für den Emulator. Prüfskripte: `android/scripts/check-apk.sh` (16-KB-Alignment,
+  keine Berechtigungen, SDK-Stufen) und `android/scripts/smoke.sh` (installieren, starten, Zurück).
 - Ziel-ABIs: `x86_64` (Emulator) und `arm64-v8a` (Geräte).
 
 ### Android-Versionen
@@ -51,15 +58,17 @@ Details zu Modulen, Datenmodell, Datenfluss und Grenzen: [`ARCHITECTURE.md`](ARC
 
 Was daraus folgt:
 - Photo Picker (`MediaStore.ACTION_PICK_IMAGES`, ab API 33 im System), MediaStore ohne Speicherberechtigung (ab API 29)
-  und `FileProvider`-Teilen sind auf allen Zielgeräten vorhanden. Fallbacks für ältere Versionen sind nicht nötig.
-- **Edge-to-Edge auf allen Versionen:** Ab Android 15 ist es Pflicht; auf Android 13/14 schaltet die App es selbst ein,
-  damit sie überall gleich aussieht. Die App zeichnet unter Status- und Navigationsleiste.
-  Kotlin liest die System-Insets aus (`WindowInsets`) und gibt sie per JNI an Rust weiter. Die Slint-UI
-  rückt ihre Inhalte entsprechend ein (`safe-area`-Properties).
+  und Teilen über den eigenen `ShareProvider` sind auf allen Zielgeräten vorhanden. Fallbacks für ältere Versionen sind nicht nötig.
+- **Edge-to-Edge auf allen Versionen:** Ab Android 15 ist es Pflicht; auf Android 13/14 schaltet Kotlin es selbst ein
+  (`setDecorFitsSystemWindows(false)`), damit die App überall gleich aussieht. Die App zeichnet unter Status- und
+  Navigationsleiste. Slint 1.18 liest die Insets der Systemleisten und des Display-Ausschnitts selbst und stellt sie als
+  `Window.safe-area-insets` bereit; `ui/app.slint` rückt den Inhalt damit ein.
 - **16-KB-Speicherseiten:** Native Bibliotheken müssen 16-KB-aligned sein (Pflicht bei Google Play, ab Android 15
   auf Geräten möglich). NDK r28+ erledigt das standardmäßig; geprüft wird es mit `zipalign -c -P 16` bzw. im APK-Analyzer.
 - **Predictive Back:** In der Kotlin-Activity wird der Zurück-Callback (`OnBackInvokedCallback`, ab API 33; im Manifest
   `android:enableOnBackInvokedCallback="true"`) an Rust weitergereicht: Im Editor geht es zurück zur Startansicht, auf der Startansicht wird die App geschlossen.
+  Rust registriert den Callback erst nach `slint::android::init`, weil Slint ab API 34 einen eigenen registriert.
+- HEIC/WebP werden noch nicht unterstützt (Hinweis beim Auswählen); folgt in Meilenstein 6.
 - Emulator-Images (x86_64): Android 13 (API 33) als Minimum, Android 16 (API 36) und die neueste Version (API 37) für den Test „bis latest“.
 
 ## Umsetzung in Meilensteinen

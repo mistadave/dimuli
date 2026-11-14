@@ -36,15 +36,6 @@ pub(crate) struct Message {
     pub(crate) text: String,
 }
 
-/// Safe-area insets in logical pixels (all zero on the desktop).
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) struct Insets {
-    pub(crate) top: f32,
-    pub(crate) bottom: f32,
-    pub(crate) left: f32,
-    pub(crate) right: f32,
-}
-
 /// What the finger or mouse on the canvas is currently doing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Gesture {
@@ -138,7 +129,6 @@ pub(crate) struct AppState {
     pub(crate) canvas: Size,
     /// Side of the square divider handles in pixels (the UI theme's touch-target size); set by the controller.
     pub(crate) touch_target: f32,
-    pub(crate) insets: Insets,
     pub(crate) confirm_back: bool,
     pub(crate) gesture: Gesture,
 }
@@ -155,7 +145,6 @@ impl AppState {
             template_index: None,
             canvas: Size::default(),
             touch_target: 0.0,
-            insets: Insets::default(),
             confirm_back: false,
             gesture: Gesture::Idle,
         }
@@ -175,6 +164,29 @@ impl AppState {
             kind: MessageKind::Notice,
             text: text.into(),
         });
+    }
+
+    /// Result of saving to the gallery: a notice on success, the platform's message on failure.
+    pub(crate) fn save_finished(&mut self, result: Result<(), String>) {
+        match result {
+            Ok(()) => self.show_notice(texts::SAVED),
+            Err(message) => {
+                log::error!("saving failed: {message}");
+                self.show_error(message);
+            }
+        }
+    }
+
+    /// Result of opening the share sheet. Success shows nothing: the sheet itself is the feedback
+    /// and Android cannot report whether the user really shared (D-11).
+    pub(crate) fn share_finished(&mut self, result: Result<(), String>) {
+        match result {
+            Ok(()) => log::info!("share sheet opened"),
+            Err(message) => {
+                log::error!("sharing failed: {message}");
+                self.show_error(message);
+            }
+        }
     }
 
     pub(crate) fn dismiss_message(&mut self) {
@@ -330,16 +342,6 @@ impl AppState {
         self.gesture = Gesture::Idle;
         // Messages refer to the discarded collage.
         self.message = None;
-    }
-
-    pub(crate) fn set_insets(&mut self, insets: Insets) {
-        let sane = |v: f32| if v.is_finite() { v.max(0.0) } else { 0.0 };
-        self.insets = Insets {
-            top: sane(insets.top),
-            bottom: sane(insets.bottom),
-            left: sane(insets.left),
-            right: sane(insets.right),
-        };
     }
 
     pub(crate) fn set_canvas(&mut self, width: f32, height: f32) {
@@ -754,6 +756,40 @@ mod tests {
         assert_eq!(collage(&editor(&[(10, 10)])).cells().len(), 1);
         let many = vec![(10, 10); MAX_IMAGES];
         assert_eq!(collage(&editor(&many)).cells().len(), MAX_IMAGES);
+    }
+
+    #[test]
+    fn saved_success_shows_saved_notice() {
+        let mut state = AppState::new();
+        state.save_finished(Ok(()));
+        let message = state.message.unwrap();
+        assert_eq!(message.kind, MessageKind::Notice);
+        assert_eq!(message.text, texts::SAVED);
+    }
+
+    #[test]
+    fn saved_failure_shows_error_message() {
+        let mut state = AppState::new();
+        state.save_finished(Err("nope".to_owned()));
+        let message = state.message.unwrap();
+        assert_eq!(message.kind, MessageKind::Error);
+        assert_eq!(message.text, "nope");
+    }
+
+    #[test]
+    fn shared_success_shows_no_message() {
+        let mut state = AppState::new();
+        state.share_finished(Ok(()));
+        assert!(state.message.is_none());
+    }
+
+    #[test]
+    fn shared_failure_shows_error_message() {
+        let mut state = AppState::new();
+        state.share_finished(Err("nope".to_owned()));
+        let message = state.message.unwrap();
+        assert_eq!(message.kind, MessageKind::Error);
+        assert_eq!(message.text, "nope");
     }
 
     #[test]
@@ -1211,27 +1247,12 @@ mod tests {
     }
 
     #[test]
-    fn invalid_canvas_sizes_and_insets_are_sanitized() {
+    fn invalid_canvas_sizes_are_sanitized() {
         let mut state = AppState::new();
         state.set_canvas(200.0, 100.0);
         state.set_canvas(f32::NAN, 5.0);
         state.set_canvas(-1.0, 5.0);
         assert_eq!(state.canvas, Size::new(200.0, 100.0));
-        state.set_insets(Insets {
-            top: -4.0,
-            bottom: f32::INFINITY,
-            left: 3.0,
-            right: f32::NAN,
-        });
-        assert_eq!(
-            state.insets,
-            Insets {
-                top: 0.0,
-                bottom: 0.0,
-                left: 3.0,
-                right: 0.0
-            }
-        );
     }
 
     #[test]

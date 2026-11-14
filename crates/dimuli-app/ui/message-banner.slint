@@ -20,10 +20,22 @@ export component MessageBanner inherits Rectangle {
             color: Backend.message-is-error ? Theme.on-error : Theme.on-notice;
         }
         AppButton {
-            text: "✕";
             width: Theme.touch-target;
             clicked => {
                 Backend.dismiss-message();
+            }
+            // Drawn cross: the system font has no glyph for U+2715 on Android.
+            Path {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: Theme.chevron-size;
+                height: Theme.chevron-size;
+                viewbox-width: 12;
+                viewbox-height: 12;
+                commands: "M 0 0 L 12 12 M 12 0 L 0 12";
+                stroke: Theme.on-surface;
+                stroke-width: Theme.border-medium;
+                stroke-line-cap: round;
             }
         }
     }

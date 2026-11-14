@@ -1,0 +1,53 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "Tooling Setup",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Workspace and Layout Engine",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Desktop Editor",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Export Renderer",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Android Shell",
+      "status": "in_progress"
+    },
+    {
+      "number": "6",
+      "name": "Polish and v1 Acceptance",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "Developer Docs for the Android Build",
+      "status": "pending"
+    },
+    {
+      "number": "8",
+      "name": "More Than 9 Images",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 5 of 8 · 50% · executing"
+  },
+  "updated_at": "2026-11-13T19:25:07.343Z"
+}
