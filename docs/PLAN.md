@@ -98,7 +98,7 @@ Was daraus folgt:
       `DECODE_MAX_PIXELS` für Geräte auf 64 MP gesenkt, zusätzlich `DECODE_MAX_ALLOC` 256 MiB.
     - Offene Review-Hinweise aus M4: einige Render-Tests nutzen Ausgabegrößen über 64 px; Desktop-„Teilen“
       rendert erst voll und meldet dann „nicht verfügbar“.
-- [ ] 7. **CLAUDE.md aktualisieren:** `cargo-apk`-Befehle durch den `cargo ndk` + Gradle-Ablauf ersetzen und die Struktur ergänzen.
+- [x] 7. **CLAUDE.md aktualisieren:** `cargo-apk`-Befehle durch den `cargo ndk` + Gradle-Ablauf ersetzen und die Struktur ergänzen.
 - [ ] 8. **Mehr als 9 Bilder:** Raster-Generator in `templates`, der für jede Bildanzahl ein Layout erzeugt;
   `MAX_IMAGES` anheben (Ziel: kein festes Limit, die Felder werden kleiner). Speicher und Bedienbarkeit
   mit vielen Bildern im Emulator prüfen.

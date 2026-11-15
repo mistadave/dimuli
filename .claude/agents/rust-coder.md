@@ -62,7 +62,7 @@ cargo test --workspace
 ```
 
 Bei Änderungen an Android-Code zusätzlich, sofern das NDK verfügbar ist:
-`cargo ndk -t x86_64 --platform 33 check -p dimuli-app`.
+`ANDROID_JAR=$ANDROID_HOME/platforms/android-37.0/android.jar cargo ndk -t x86_64 --platform 33 clippy -p dimuli-app --lib -- -D warnings -A clippy::missing_const_for_thread_local`.
 
 Weicht die Umsetzung von `docs/ARCHITECTURE.md` ab (Signaturen, Datenmodell, Konstanten), passe das Dokument an.
 Meilensteine in `docs/PLAN.md` hakst du **nicht** ab; das entscheidet die aufrufende Sitzung nach dem Review.

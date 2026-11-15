@@ -25,9 +25,9 @@ A user can turn a handful of photos into one well-arranged collage image and get
 
 <!-- Current scope. Full list with IDs in REQUIREMENTS.md. -->
 
-- [ ] Android shell: Gradle project + Kotlin `MainActivity : NativeActivity`, JNI bridge, Photo Picker, MediaStore save, share sheet, edge-to-edge insets, back/predictive back, 16 KB alignment, touch editing on device — Phase 5 (ANDR-01..08)
-- [ ] Polish: lifecycle (pause/resume keeps state), performance with large images, complete German error messages, open M3/M4 review notes, v1 acceptance on a real Android 16 device — Phase 6 (LIFE-01, PERF-01, ERRM-01, POLI-01..02, ACPT-01)
-- [ ] CLAUDE.md documents the `cargo ndk` + Gradle flow instead of `cargo-apk` — Phase 7 (ENV-03)
+- [x] Android shell: Gradle project + Kotlin `MainActivity : NativeActivity`, JNI bridge, Photo Picker, MediaStore save, share sheet, edge-to-edge insets, back/predictive back, 16 KB alignment, touch editing on device — Phase 5 (ANDR-01..08)
+- [x] Polish: lifecycle (pause/resume keeps state), performance with large images, complete German error messages, open M3/M4 review notes, v1 acceptance on a real Android 16 device — Phase 6 (LIFE-01, PERF-01, ERRM-01, POLI-01..02, ACPT-01)
+- [x] CLAUDE.md documents the `cargo ndk` + Gradle flow instead of `cargo-apk` — Phase 7 (ENV-03)
 - [ ] More than 9 images via a grid generator in `templates` (goal: no fixed limit) — Phase 8 (MANY-01..03); committed follow-up beyond the v1 success metric
 
 ### Out of Scope
@@ -47,7 +47,6 @@ A user can turn a handful of photos into one well-arranged collage image and get
 
 - **Repo state (2026-11-13):** Cargo workspace with `crates/collage-core` (pure logic) and `crates/dimuli-app` (Slint UI, controller, `platform/{mod,desktop}.rs`). No `android/` Gradle project and no `platform/android.rs` yet. Milestones 0-4 of `docs/PLAN.md` are done; 5-8 are open.
 - **Human docs (source of this roadmap):** `docs/PLAN.md` (German plan and milestone checklist), `docs/ARCHITECTURE.md` (modules, data model, data flow, limits), `docs/CODING_GUIDELINES.md` (binding rules, completion checklist), `CLAUDE.md` (commands, agent workflow). GSD Phase N corresponds to PLAN.md milestone N; milestone 0 (record the plan) is the baseline, not a phase.
-- **Known stale item:** `CLAUDE.md` still lists `cargo apk` commands; `docs/PLAN.md` prescribes `cargo ndk` + Gradle (fixed in Phase 7).
 - **Open review notes:** M3 — reduce snapshot allocations per pointer event (only update cells during a gesture), possible 1-frame flicker after aspect change, unnecessary pixel-buffer copy on load, consider lowering `DECODE_MAX_PIXELS` to 64 MP for devices. M4 — some render tests use outputs above 64 px; desktop "Teilen" renders fully and then reports "nicht verfügbar". All scheduled in Phase 6.
 - **Agent workflow:** code is written by the `rust-coder` subagent; `code-reviewer` runs before committing new functionality; no commits or pushes without an explicit request.
 - **Verification approach:** `cargo test --workspace`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt`; full flow on desktop via `cargo run -p dimuli-app -- a.jpg b.png`; Android checks in emulators `dimuli_api33` / `dimuli_api36` / `dimuli_api37` and on a real device; logs via `adb logcat -s dimuli`.

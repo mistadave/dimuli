@@ -32,7 +32,7 @@ cargo test --workspace
 Falls `android/` oder `platform/android.rs` geändert wurde und das NDK verfügbar ist, zusätzlich:
 
 ```sh
-cargo ndk -t x86_64 --platform 33 check -p dimuli-app
+ANDROID_JAR=$ANDROID_HOME/platforms/android-37.0/android.jar cargo ndk -t x86_64 --platform 33 clippy -p dimuli-app --lib -- -D warnings -A clippy::missing_const_for_thread_local
 ```
 
 Melde fehlschlagende Befehle mit der relevanten Ausgabe. Existiert ein Befehl noch nicht (z. B. leerer Workspace),

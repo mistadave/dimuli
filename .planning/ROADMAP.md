@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Export Renderer** - JPEG export in `collage-core` with pixel test; desktop save to file (completed 2026-11-13)
 - [x] **Phase 5: Android Shell** - Gradle project, Kotlin activity, JNI bridge, Photo Picker, MediaStore, sharing; running in the emulator and on a device
 - [x] **Phase 6: Polish and v1 Acceptance** - Lifecycle, performance with large images, error messages, open review notes, real-device acceptance
-- [ ] **Phase 7: Developer Docs for the Android Build** - Replace `cargo-apk` commands in `CLAUDE.md` with the `cargo ndk` + Gradle flow
+- [x] **Phase 7: Developer Docs for the Android Build** - Replace `cargo-apk` commands in `CLAUDE.md` with the `cargo ndk` + Gradle flow
 - [ ] **Phase 8: More Than 9 Images** - Grid generator for any image count; lift `MAX_IMAGES`
 
 ## Phase Details
@@ -122,7 +122,10 @@ Plans:
   1. `CLAUDE.md` lists the `cargo ndk` + Gradle commands for building, installing and viewing logs, and no `cargo-apk` commands remain
   2. Every documented command runs successfully as written in the WSL2 setup (emulator `dimuli_api36`)
   3. The project structure in `CLAUDE.md` includes the `android/` Gradle project next to the two crates
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [x] 07-01-PLAN.md — CLAUDE.md: `cargo ndk` + Gradle build/check/install/start/log commands, Android lint, structure with `android/`; every command run as written on dimuli_api36; agent commands listed for the owner; milestone 7 ticked
 
 ### Phase 8: More Than 9 Images
 **Goal**: Users can build a collage from more than 9 images; the app no longer enforces a fixed image limit (`docs/PLAN.md` milestone 8; committed follow-up beyond the v1 success metric)
@@ -148,5 +151,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Export Renderer | n/a (pre-GSD) | Complete | 2026-11-13 |
 | 5. Android Shell | 8/8 | Complete | 2026-11-15 |
 | 6. Polish and v1 Acceptance | 8/8 | Complete | 2026-11-15 |
-| 7. Developer Docs for the Android Build | 0/TBD | Not started | - |
+| 7. Developer Docs for the Android Build | 1/1 | Complete | 2026-11-15 |
 | 8. More Than 9 Images | 0/TBD | Not started | - |

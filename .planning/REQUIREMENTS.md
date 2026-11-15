@@ -13,7 +13,7 @@ Requirements for the first release. v1 success metric: on a real Android 16 devi
 
 - [x] **ENV-01**: The WSL2 toolchain for Android work is in place: Android SDK + NDK r30, emulator AVDs `dimuli_api36` and `dimuli_api37` running with KVM, Rust targets `aarch64-linux-android` and `x86_64-linux-android`, `cargo-ndk`, and `ANDROID_HOME` / `ANDROID_NDK_HOME` set
 - [x] **ENV-02**: A developer can preview the full app on the desktop with `cargo run -p dimuli-app -- a.jpg b.png` (images as CLI arguments, no file dialog)
-- [ ] **ENV-03**: `CLAUDE.md` documents the `cargo ndk` + Gradle build, install and log flow and the project structure (including `android/`), and no longer lists `cargo-apk` commands
+- [x] **ENV-03**: `CLAUDE.md` documents the `cargo ndk` + Gradle build, install and log flow and the project structure (including `android/`), and no longer lists `cargo-apk` commands
 
 ### Layout Engine (collage-core)
 
@@ -145,7 +145,7 @@ Which phases cover which requirements. Phase N corresponds to `docs/PLAN.md` mil
 | POLI-01 | Phase 6 | Complete |
 | POLI-02 | Phase 6 | Complete |
 | ACPT-01 | Phase 6 | Complete |
-| ENV-03 | Phase 7 | Pending |
+| ENV-03 | Phase 7 | Complete |
 | MANY-01 | Phase 8 | Pending |
 | MANY-02 | Phase 8 | Pending |
 | MANY-03 | Phase 8 | Pending |
