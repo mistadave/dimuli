@@ -101,7 +101,17 @@ Plans:
   3. Every failure (unreadable image, pick, export, save, share) shows a short German message saying what happened and what to do, with no technical details
   4. Changing the aspect ratio shows no flicker frame, desktop "Teilen" immediately reports "nicht verfügbar" without rendering first, and render tests use outputs of 64 px or less with `cargo test --workspace`, clippy and fmt green
   5. On a real Android 16 device, a user creates a collage from 1-9 images, saves it to the gallery, and sees it there (v1 success metric)
-**Plans**: TBD
+**Plans**: 8 plans
+
+Plans:
+- [x] 06-01-PLAN.md — Core: decode limits 64 MP / 256 MiB / edge as "too large" (D-08, D-17, D-18), preview with one copy, render tests <= 64 px
+- [x] 06-02-PLAN.md — Messages: success auto-hide after 3 s (D-11), own du-form text per failure incl. "zu groß" (D-13), late-result guards
+- [x] 06-03-PLAN.md — Rust-owned canvas size (no aspect flicker), gesture fast path, desktop share early-out
+- [x] 06-04-PLAN.md — Android import: Kotlin ImageDecoder transcode HEIC/WebP/AVIF (PNG for alpha), downscale > 64 MP, failed-copy count over JNI
+- [x] 06-05-PLAN.md — Lifecycle: restart notice (D-06, D-15), complete configChanges, review notes N1-N5, emulator pause/resume flows
+- [x] 06-06-PLAN.md — Emulator verification: 50/80 MP, rotated, HEIC/WebP/alpha matrix with peak memory (D-10), API 33/37 matrix, device smoke
+- [x] 06-07-PLAN.md — Code review + critical fixes, docs record limits and Phase 6 as built
+- [ ] 06-08-PLAN.md — Owner's final device test on Android 14 + 16 (ACPT-01 + deferred 05-07 checklist), device memory, milestones 5 and 6 ticked
 **UI hint**: yes
 
 ### Phase 7: Developer Docs for the Android Build
@@ -137,6 +147,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Desktop Editor | n/a (pre-GSD) | Complete | 2026-11-13 |
 | 4. Export Renderer | n/a (pre-GSD) | Complete | 2026-11-13 |
 | 5. Android Shell | 6/8 | In Progress | - |
-| 6. Polish and v1 Acceptance | 0/TBD | Not started | - |
+| 6. Polish and v1 Acceptance | 7/8 | In Progress | - |
 | 7. Developer Docs for the Android Build | 0/TBD | Not started | - |
 | 8. More Than 9 Images | 0/TBD | Not started | - |

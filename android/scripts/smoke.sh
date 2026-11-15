@@ -36,15 +36,18 @@ done
 [ "$booted" = "1" ] || fail "boot"
 
 [ -f "$APK" ] || fail "apk missing: $APK"
-"${ADB[@]}" install -r "$APK" 2>&1 | grep -q "Success" || fail "install"
+install_output="$("${ADB[@]}" install -r "$APK" 2>&1)" || fail "install"
+grep -q "Success" <<<"$install_output" || fail "install"
 
 "${ADB[@]}" logcat -c
 "${ADB[@]}" shell am force-stop "$PKG"
-"${ADB[@]}" shell am start -W -n "$PKG/.MainActivity" 2>&1 | grep -q "Status: ok" || fail "launch"
+start_output="$("${ADB[@]}" shell am start -W -n "$PKG/.MainActivity" 2>&1)" || fail "launch"
+grep -q "Status: ok" <<<"$start_output" || fail "launch"
 
 started=""
 for _ in $(seq 1 15); do
-    if "${ADB[@]}" logcat -d -s dimuli 2>/dev/null | grep -q "dimuli started" \
+    logs="$("${ADB[@]}" logcat -d -s dimuli 2>/dev/null || true)"
+    if grep -q "dimuli started" <<<"$logs" \
         && [ -n "$("${ADB[@]}" shell pidof "$PKG" | tr -d '\r')" ]; then
         started=1
         break
@@ -54,6 +57,7 @@ done
 [ -n "$started" ] || fail "start log / process"
 
 mkdir -p "$REPO_ROOT/android/build/smoke"
+sleep 2
 "${ADB[@]}" exec-out screencap -p > "$REPO_ROOT/android/build/smoke/$SERIAL-start.png" || fail "screenshot"
 
 "${ADB[@]}" shell input keyevent KEYCODE_BACK

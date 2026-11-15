@@ -36,7 +36,8 @@ Details zu Modulen, Datenmodell, Datenfluss und Grenzen: [`ARCHITECTURE.md`](ARC
   `backend-android-activity-06` (`native-activity`).
 - **Bildauswahl:** System-Photo-Picker über `MediaStore.ACTION_PICK_IMAGES` und `onActivityResult`
   (`NativeActivity` ist keine AndroidX-`ComponentActivity`, daher kein Activity-Result-Contract). Kotlin kopiert die
-  ausgewählten URIs nach `cacheDir/picked/img-<n>` und ruft `nativeImagesPicked(paths)` auf; die nativen Funktionen
+  ausgewählten URIs nach `cacheDir/picked/img-<n>` (alles außer JPEG/PNG wandelt es dabei mit `ImageDecoder` um,
+  Bilder über 64 MP bzw. 16 384 px werden verkleinert) und ruft `nativeImagesPicked(paths, failed)` auf; die nativen Funktionen
   registriert Rust per `RegisterNatives`. Rust übernimmt den Rest.
 - **Speichern:** `MediaStore.Images` (`Pictures/dimuli`) mit `IS_PENDING`, ab API 29 ohne Speicherberechtigung.
 - **Teilen:** Datei in `cacheDir/share`, eigener `ShareProvider` (ContentProvider ohne AndroidX) und `ACTION_SEND`
@@ -68,7 +69,10 @@ Was daraus folgt:
 - **Predictive Back:** In der Kotlin-Activity wird der Zurück-Callback (`OnBackInvokedCallback`, ab API 33; im Manifest
   `android:enableOnBackInvokedCallback="true"`) an Rust weitergereicht: Im Editor geht es zurück zur Startansicht, auf der Startansicht wird die App geschlossen.
   Rust registriert den Callback erst nach `slint::android::init`, weil Slint ab API 34 einen eigenen registriert.
-- HEIC/WebP werden noch nicht unterstützt (Hinweis beim Auswählen); folgt in Meilenstein 6.
+- HEIC/HEIF, WebP und (wo das Gerät es kann) AVIF wandelt Kotlin beim Kopieren mit `ImageDecoder` in JPEG bzw. PNG (bei
+  Transparenz) um; Rust liest nur JPEG und PNG.
+- **Lifecycle:** Konfigurationsänderungen (Drehen, Dunkelmodus, Schriftgröße …) erzeugen keine neue Activity (`configChanges`).
+  Beendet das System die App mit offener Collage, zeigt der nächste Start einen Hinweis; eine Persistenz der Collage gibt es in v1 nicht.
 - Emulator-Images (x86_64): Android 13 (API 33) als Minimum, Android 16 (API 36) und die neueste Version (API 37) für den Test „bis latest“.
 
 ## Umsetzung in Meilensteinen
@@ -91,7 +95,7 @@ Was daraus folgt:
 - [ ] 6. **Feinschliff:** Lifecycle (Pause/Resume, Zustand halten), Performance mit großen Bildern, Fehlermeldungen in der UI.
     - Offene Review-Hinweise aus M3: Snapshot-Allokationen pro Zeigerereignis reduzieren (während einer Geste nur Zellen
       aktualisieren), mögliches 1-Frame-Flackern nach Formatwechsel, unnötige Pixelbuffer-Kopie beim Laden,
-      `DECODE_MAX_PIXELS` für Geräte ggf. auf 64 MP senken.
+      `DECODE_MAX_PIXELS` für Geräte auf 64 MP gesenkt, zusätzlich `DECODE_MAX_ALLOC` 256 MiB.
     - Offene Review-Hinweise aus M4: einige Render-Tests nutzen Ausgabegrößen über 64 px; Desktop-„Teilen“
       rendert erst voll und meldet dann „nicht verfügbar“.
 - [ ] 7. **CLAUDE.md aktualisieren:** `cargo-apk`-Befehle durch den `cargo ndk` + Gradle-Ablauf ersetzen und die Struktur ergänzen.
@@ -117,4 +121,5 @@ dimuli nutzt Slint unter der **Slint Royalty-free License 2.0**. Bedingung: Die 
 - Emulator (API 33, API 36 und neueste API 37): APK mit `adb install` installieren und durchspielen. Zusätzlich prüfen: Inhalte
   werden nicht von System-Leisten verdeckt, Zurück-Geste funktioniert, 16-KB-Alignment besteht. Ablauf: Photo Picker mit 3–5 Bildern, Trennlinien ziehen,
   zoomen, tauschen, in die Galerie speichern (in Google Fotos prüfen), Teilen-Dialog öffnen,
-  App pausieren und fortsetzen. Logs mit `adb logcat -s dimuli`.
+  App pausieren und fortsetzen. Große Fotos (50/80 MP) sowie HEIC/WebP laden und speichern; Hinweis nach einem Neustart
+  durch das System prüfen. Logs mit `adb logcat -s dimuli`.

@@ -85,7 +85,8 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 ## 5. Kotlin / Android
 
 - Kotlin nur für: Activity-Lifecycle, Photo Picker, MediaStore, Teilen-Intent, Edge-to-Edge auf Android 13/14,
-  Back-Callback. `ShareProvider.kt` ist die einzige Kotlin-Datei neben `MainActivity.kt` und enthält kein JNI.
+  Back-Callback, das Umwandeln und Verkleinern ausgewählter Bilder beim Kopieren (`ImageDecoder`, braucht den
+  `ContentResolver`) und den Neustart-Merker in `onSaveInstanceState`. `ShareProvider.kt` ist die einzige Kotlin-Datei neben `MainActivity.kt` und enthält kein JNI.
 - Jede Kotlin-Funktion, die Rust aufruft oder von Rust aufgerufen wird, steht in `MainActivity.kt` im Abschnitt
   `// region JNI bridge`; Signaturen auf beiden Seiten identisch dokumentieren.
 - Keine zusätzlichen Berechtigungen im Manifest ohne Rückfrage (minSdk 33 braucht keine Speicherberechtigung).
@@ -105,6 +106,8 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
 - Fehler zuerst als fehlschlagenden Test reproduzieren, dann beheben.
 - Export-Tests vergleichen Pixel an definierten Stellen (kein Abgleich ganzer Referenzbilder).
 - Testbilder klein halten (≤ 64 px) und im Test erzeugen statt als Datei einzuchecken.
+- Kotlin-Code (Umwandlung, `ShareProvider`, MediaStore, Neustart-Merker) hat keine Unit-Tests; er ist nur durch Emulator-
+  und Gerätetests abgedeckt. Änderungen daran deshalb immer im Emulator durchspielen.
 
 ## 8. Abhängigkeiten
 

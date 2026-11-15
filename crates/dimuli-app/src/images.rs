@@ -48,14 +48,7 @@ pub(crate) fn load_image(path: &Path) -> Result<LoadedImage, CoreError> {
     // Orient the small preview instead of the full image to save time and memory.
     let mut preview = downscale(decoded, PREVIEW_MAX_EDGE);
     preview.apply_orientation(orientation);
-    let rgba = preview.into_rgba8();
-    let (preview_width, preview_height) = rgba.dimensions();
-    if preview_width == 0 || preview_height == 0 {
-        return Err(CoreError::InvalidImageSize {
-            width: preview_width,
-            height: preview_height,
-        });
-    }
+    let buffer = preview_buffer(&preview)?;
     let (width, height) = if swaps_axes(orientation) {
         (height, width)
     } else {
@@ -65,8 +58,49 @@ pub(crate) fn load_image(path: &Path) -> Result<LoadedImage, CoreError> {
         path: path.to_path_buf(),
         width,
         height,
-        preview: SharedPixelBuffer::clone_from_slice(rgba.as_raw(), preview_width, preview_height),
+        preview: buffer,
     })
+}
+
+/// Copies `image` once into a Slint pixel buffer. RGB and RGBA sources are written directly; other
+/// formats take a detour through `to_rgba8` (rare, so the extra copy is acceptable).
+fn preview_buffer(image: &DynamicImage) -> Result<SharedPixelBuffer<Rgba8Pixel>, CoreError> {
+    let (width, height) = (image.width(), image.height());
+    let invalid = CoreError::InvalidImageSize { width, height };
+    if width == 0 || height == 0 {
+        return Err(invalid);
+    }
+    let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
+    let target = buffer.make_mut_slice();
+    match image {
+        DynamicImage::ImageRgb8(rgb) => {
+            let raw = rgb.as_raw();
+            if raw.len() / 3 != target.len() {
+                return Err(invalid);
+            }
+            for (&[r, g, b], dst) in raw.as_chunks::<3>().0.iter().zip(target.iter_mut()) {
+                *dst = Rgba8Pixel { r, g, b, a: 255 };
+            }
+        }
+        DynamicImage::ImageRgba8(rgba) => fill_rgba(rgba.as_raw(), target, invalid)?,
+        other => fill_rgba(other.to_rgba8().as_raw(), target, invalid)?,
+    }
+    Ok(buffer)
+}
+
+/// Writes tightly packed RGBA bytes into `target`; fails if the lengths do not match.
+fn fill_rgba(
+    raw: &[u8],
+    target: &mut [Rgba8Pixel],
+    on_mismatch: CoreError,
+) -> Result<(), CoreError> {
+    if raw.len() / 4 != target.len() {
+        return Err(on_mismatch);
+    }
+    for (&[r, g, b, a], dst) in raw.as_chunks::<4>().0.iter().zip(target.iter_mut()) {
+        *dst = Rgba8Pixel { r, g, b, a };
+    }
+    Ok(())
 }
 
 /// Shrinks `image` to at most `max_edge` on its longest edge, keeping the aspect ratio.
@@ -230,6 +264,61 @@ mod tests {
     }
 
     #[test]
+    fn loads_png_with_source_colours() {
+        let dir = temp_dir("colours");
+        let path = dir.join("c.png");
+        gradient(40, 20).save(&path).unwrap();
+        let loaded = load_image(&path).unwrap();
+        // Pixel (5, 3) of the gradient is (5, 3, 7); buffers are row-major.
+        let pixel = loaded.preview.as_slice().get(3 * 40 + 5).unwrap();
+        assert_eq!((pixel.r, pixel.g, pixel.b, pixel.a), (5, 3, 7, 255));
+    }
+
+    #[test]
+    fn preview_buffer_adds_opaque_alpha_to_rgb() {
+        let img = DynamicImage::ImageRgb8(
+            RgbImage::from_raw(2, 1, vec![10, 20, 30, 40, 50, 60]).unwrap(),
+        );
+        let buf = preview_buffer(&img).unwrap();
+        assert_eq!((buf.width(), buf.height()), (2, 1));
+        let px: Vec<_> = buf
+            .as_slice()
+            .iter()
+            .map(|p| (p.r, p.g, p.b, p.a))
+            .collect();
+        assert_eq!(px, vec![(10, 20, 30, 255), (40, 50, 60, 255)]);
+    }
+
+    #[test]
+    fn preview_buffer_keeps_rgba_alpha() {
+        let img =
+            DynamicImage::ImageRgba8(image::RgbaImage::from_raw(1, 1, vec![1, 2, 3, 4]).unwrap());
+        let buf = preview_buffer(&img).unwrap();
+        let p = buf.as_slice().first().unwrap();
+        assert_eq!((p.r, p.g, p.b, p.a), (1, 2, 3, 4));
+    }
+
+    #[test]
+    fn preview_buffer_converts_other_formats() {
+        let img = DynamicImage::ImageLuma8(image::GrayImage::from_raw(1, 1, vec![77]).unwrap());
+        let buf = preview_buffer(&img).unwrap();
+        let p = buf.as_slice().first().unwrap();
+        assert_eq!((p.r, p.g, p.b, p.a), (77, 77, 77, 255));
+    }
+
+    #[test]
+    fn preview_buffer_rejects_empty_images() {
+        let img = DynamicImage::ImageRgb8(RgbImage::new(0, 0));
+        assert_eq!(
+            preview_buffer(&img).unwrap_err(),
+            CoreError::InvalidImageSize {
+                width: 0,
+                height: 0
+            }
+        );
+    }
+
+    #[test]
     fn loads_jpeg() {
         let dir = temp_dir("jpeg");
         let path = dir.join("a.jpg");
@@ -388,10 +477,8 @@ mod tests {
         let dir = temp_dir("huge");
         let path = dir.join("huge.png");
         std::fs::write(&path, png_header_only(20_000, 20_000)).unwrap();
-        assert!(matches!(
-            load_image(&path),
-            Err(CoreError::ImageDecode { .. })
-        ));
+        let r = load_image(&path);
+        assert!(matches!(r, Err(CoreError::ImageTooLarge { .. })), "{r:?}");
         // Within the edge limit but above the pixel budget.
         std::fs::write(&path, png_header_only(10_100, 10_000)).unwrap();
         let r = load_image(&path);

@@ -1,20 +1,20 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 5
-current_phase_name: Android Shell
+current_phase: 6
+current_phase_name: Polish and v1 Acceptance
 current_plan: 8
 status: executing
-stopped_at: Completed 05-08-PLAN.md partially (review + fixes + docs done; milestone 5 tick waits for final device test), uncommitted
-last_updated: "2026-11-14T19:00:00.000Z"
-last_activity: 2026-11-14
-last_activity_desc: 05-08 — code review (0 critical), warnings 1-4 fixed, docs updated, all gates + smoke green; milestone 5 unticked until final device test
-state_head: 262306a50e492d830a8bbfa9307fd0ece188cb50
+stopped_at: Completed 06-07-PLAN.md (uncommitted)
+last_updated: "2026-11-15T12:00:00.000Z"
+last_activity: 2026-11-15
+last_activity_desc: 06-07 — code review (0 critical, 2 warnings fixed), docs updated, all gates green
+state_head: ff11541208a5b6e669342453d41347f14e5b5d7b
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-  percent: 50
+  total_plans: 16
+  completed_plans: 15
+  percent: 94
 ---
 
 # Project State
@@ -24,34 +24,35 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-13)
 
 **Core value:** A user can turn a handful of photos into one well-arranged collage image and get it into their gallery in a few taps.
-**Current focus:** Phase 5 - Android Shell
+**Current focus:** Phase 6 - Polish and v1 Acceptance
 
 ## Current Position
 
-Phase: 5 of 8 (Android Shell)
+Phase: 6 of 8 (Polish and v1 Acceptance)
 Current Plan: 8
 Total Plans in Phase: 8
 Plan: 8 of 8 in current phase
-Status: Phase 5 executed, awaiting final device test and owner commit
-Last activity: 2026-11-14 — 05-08: code-reviewer found 0 critical; warnings 1-4 (Kotlin error paths, doc comment) fixed by rust-coder; PLAN/ARCHITECTURE/CODING_GUIDELINES updated; fmt/clippy/test/ndk clippy/check-apk/smoke (api36 + Android 14 device) green. Milestone 5 stays unticked until the final device test (Android 16 + touch checklist). All of 05-01..05-08 uncommitted.
+Status: Executing Phase 6 (06-01..06-07 done, uncommitted; 06-08 is the owner device test); Phase 5 still awaiting final device test and owner commit
+Last activity: 2026-11-15 — 06-07 complete: review 0 critical, W1/W2 fixed, docs record limits; gates + API 36 smoke green. Uncommitted; final device test (06-08) open.
 
-Progress: [██████████] 8 of 8 Phase-5 plans executed (05-07/05-08 partial: final device test open); 4 of 8 phases complete (Phases 1-4 delivered before GSD adoption)
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 12 min (verification passes; implementation untimed)
-- Total execution time: 71 min
+- Total plans completed: 9
+- Average duration: 9 min (verification passes; implementation untimed)
+- Total execution time: 83 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 5 | 6/8 | 71 min | 12 min |
+| 6 | 3/8 | 12 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-02, 05-03, 05-04, 05-05, 05-06
+- Last 5 plans: 05-05, 05-06, 06-01, 06-02, 06-03
 - Trend: -
 
 *Updated after each plan completion*
@@ -65,6 +66,9 @@ Progress: [██████████] 8 of 8 Phase-5 plans executed (05-07/
 | Phase 05 P04 | 12min | 3 tasks | 9 files |
 | Phase 05 P05 | 8min | 2 tasks | 9 files |
 | Phase 05 P06 | 12min | 2 tasks | 1 files |
+| Phase 06 P01 | 1min | 3 tasks | 3 files |
+| Phase 06 P02 | 3min | 2 tasks | 8 files |
+| Phase 06 P03 | 8min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -84,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-05: Settings chevron is one Path with switching commands (acceptance grep Path>=2 gives 1, accepted deviation); banner below the top bar; landscape body positioned explicitly instead of VerticalLayout
 - [Phase 05]: 05-08: 0 critical review findings; warnings 1-4 fixed; milestone 5 tick deferred to final device test
 - [Phase 05]: 05-07: Owner decision — Android 16 device and touch checklist (Task 3, ANDR-08) deferred to a final device test on both devices after all work is done; Android 14 smoke + insets pass
+- [Phase 06]: 06-01: D-08/D-17/D-18 — DECODE_MAX_PIXELS 64 MP, DECODE_MAX_ALLOC 256 MiB (checked via total_bytes), edge > 16384 reported as ImageTooLarge; PERF-01/POLI-02 not marked complete (shared with later plans)
+- [Phase 06]: 06-02: D-11 success auto-hide after 3 s (Claude's discretion), success colour Theme.success #b9e4c3; D-13/D-18 separate too-large text; late loading/export results dropped (LIFE-01 result half); ERRM-01/LIFE-01 not marked complete (continue in 06-04/06-05/06-08)
+- [Phase 06]: 06-03: Rust owns the canvas size (fit_canvas, canvas written with the cells in one apply) against the aspect flicker; gesture fast path for move/pinch/scroll with full-refresh fallback on message_seq/screen change; Platform::share_supported without default body (desktop false); POLI-02 marked complete, POLI-01 waits for the 06-08 device check, PERF-01 continues in 06-04/06-06/06-08
 - [Phase 05]: 05-06: A1 (back on API 33) and A2 (edge-to-edge on API 33) confirmed on dimuli_api33 without code change; check-apk.sh proves 16 KB alignment, no permissions, minSdk 33/targetSdk 37 on the full APK
 
 ### Pending Todos
@@ -95,7 +102,7 @@ Recent decisions affecting current work:
 - [Phase 5]: RESOLVED 2026-11-13 (05-01) — workspace lint `unsafe_code = "deny"` vs. JNI: scoped `#![allow(unsafe_code)]` in `platform/android.rs` only, documented in CODING_GUIDELINES.md §3, `clippy::undocumented_unsafe_blocks = "deny"`
 - [Phase 5]: RESOLVED 2026-11-13 — owner approved jni 0.22.4, android_logger 0.15.1, Slint `backend-android-activity-06`, AGP 9.5.1 (built-in Kotlin), Gradle 9.9.1; no AndroidX (own ContentProvider, `ACTION_PICK_IMAGES`, `OnBackInvokedCallback`)
 - [Phase 5]: minSdk lowered to 33 (Android 13) on 2026-11-13; edge-to-edge enabled on all versions; emulators API 33/36/37 (AVD `dimuli_api33` created in 05-06); real devices with Android 14 and Android 16 are available for testing
-- [Phase 6]: Open review notes M3/M4 (snapshot allocations, aspect-change flicker, pixel-buffer copy, `DECODE_MAX_PIXELS` 64 MP, render-test sizes, desktop share early-out) are scheduled here
+- [Phase 6]: Review notes M3/M4 — pixel-buffer copy, `DECODE_MAX_PIXELS` 64 MP and render-test sizes DONE in 06-01; snapshot allocations, aspect-change flicker, desktop share early-out DONE in 06-03; `docs/ARCHITECTURE.md` updated in 06-07
 - [Tooling]: Phases 1-4 have no `.planning/phases/` directories or plan files; progress tooling that counts from disk may report 0 of 8 until phases are materialized
 - [Docs]: `CLAUDE.md` still documents `cargo apk` (fixed in Phase 7)
 
@@ -109,6 +116,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-13T19:25:07.934Z
-Stopped at: Completed 05-06-PLAN.md (uncommitted, awaiting owner commit)
-Resume file: None
+Last session: 2026-11-14T20:37:00.000Z
+Stopped at: Completed 06-07-PLAN.md (uncommitted)
+Resume file: .planning/phases/06-polish-and-v1-acceptance/06-08-PLAN.md

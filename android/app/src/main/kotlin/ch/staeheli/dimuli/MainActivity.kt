@@ -4,6 +4,10 @@ import android.app.NativeActivity
 import android.content.ClipData
 import android.content.ContentValues
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ColorSpace
+import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,23 +17,38 @@ import android.util.Log
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import kotlin.math.floor
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /** Thin host for the Rust app (libdimuli.so); all logic lives on the Rust side. */
 class MainActivity : NativeActivity() {
     private var backCallback: OnBackInvokedCallback? = null
+    @Volatile private var collageOpen = false
+    @Volatile private var collageLost = false
 
     /** Single worker for file copies; never block the UI thread with I/O. */
     private val io = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        collageLost = savedInstanceState?.getBoolean(KEY_COLLAGE_OPEN, false) == true
         super.onCreate(savedInstanceState)
         // From API 35 with targetSdk 37 edge-to-edge is enforced; API 33/34 need the opt-in (D-07).
         if (Build.VERSION.SDK_INT < 35) enableEdgeToEdgeLegacy()
         // Copies left over after process death; picks only start from the start screen, where no
         // collage still uses them.
-        io.execute { File(cacheDir, "picked").deleteRecursively() }
+        io.execute {
+            File(cacheDir, "picked").deleteRecursively()
+            File(cacheDir, "share").deleteRecursively()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_COLLAGE_OPEN, collageOpen)
     }
 
     @Suppress("DEPRECATION")
@@ -44,6 +63,12 @@ class MainActivity : NativeActivity() {
 
     // region JNI bridge
     // Rust -> Kotlin (called on the android_main thread; must return immediately)
+
+    /** Rust: AndroidPlatform (android_main), JNI signature ()Z. */
+    fun collageLostOnRestart(): Boolean = collageLost
+
+    /** Rust: AndroidPlatform::set_collage_open, JNI signature (Z)V. */
+    fun setCollageOpen(open: Boolean) { collageOpen = open }
 
     /**
      * Rust: `installBackCallback() -> void` (`call_void` in platform/android.rs), called after
@@ -73,7 +98,7 @@ class MainActivity : NativeActivity() {
             startActivityForResult(intent, REQUEST_PICK)
         } catch (e: RuntimeException) {
             // ActivityNotFound, Security and IllegalState all mean: no picker result will come.
-            Log.e(TAG, "cannot open the photo picker", e)
+            Log.e(TAG, "cannot open the photo picker: ${e.javaClass.simpleName}")
             native { nativePickFailed() }
         }
     }
@@ -101,13 +126,13 @@ class MainActivity : NativeActivity() {
             contentResolver.update(inserted, done, null, null)
             true
         } catch (e: Exception) {
-            Log.e(TAG, "save failed", e)
+            Log.e(TAG, "save failed: ${e.javaClass.simpleName}")
             // Only the row created by this call; never an existing gallery image.
             uri?.let {
                 try {
                     contentResolver.delete(it, null, null)
                 } catch (d: Exception) {
-                    Log.e(TAG, "cannot remove half-written row", d)
+                    Log.e(TAG, "cannot remove half-written row: ${d.javaClass.simpleName}")
                 }
             }
             false
@@ -128,7 +153,7 @@ class MainActivity : NativeActivity() {
             if (!dir.isDirectory && !dir.mkdirs()) throw java.io.IOException("cannot create share dir")
             File(dir, ShareProvider.FILE_NAME).writeBytes(jpeg)
         } catch (e: Exception) {
-            Log.e(TAG, "cannot write the share file", e)
+            Log.e(TAG, "cannot write the share file: ${e.javaClass.simpleName}")
             native { nativeShared(false) }
             return@runOnIo
         }
@@ -145,7 +170,7 @@ class MainActivity : NativeActivity() {
                 native { nativeShared(true) }
             } catch (e: RuntimeException) {
                 // ActivityNotFound, Security and IllegalState: the chooser did not open.
-                Log.e(TAG, "cannot open the share sheet", e)
+                Log.e(TAG, "cannot open the share sheet: ${e.javaClass.simpleName}")
                 native { nativeShared(false) }
             }
         }
@@ -160,10 +185,10 @@ class MainActivity : NativeActivity() {
     private external fun nativeShared(ok: Boolean)
 
     /**
-     * Rust: `native_images_picked` in platform/android.rs, JNI signature `([Ljava/lang/String;)V`.
+     * Rust: `native_images_picked` in platform/android.rs, JNI signature `([Ljava/lang/String;I)V`.
      * Absolute paths of the cache copies; an empty array means the user cancelled.
      */
-    private external fun nativeImagesPicked(paths: Array<String>)
+    private external fun nativeImagesPicked(paths: Array<String>, failed: Int)
 
     /** Rust: `native_pick_failed` in platform/android.rs, JNI signature `()V`. */
     private external fun nativePickFailed()
@@ -193,7 +218,7 @@ class MainActivity : NativeActivity() {
         }
     // endregion
 
-    @Deprecated("Platform Activity API; NativeActivity has no AndroidX result contracts (D-09)")
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode != REQUEST_PICK) {
             @Suppress("DEPRECATION")
@@ -203,16 +228,12 @@ class MainActivity : NativeActivity() {
         val uris = if (resultCode == RESULT_OK && data != null) collectUris(data) else emptyList()
         if (uris.isEmpty()) {
             // Cancelled: leave the cache alone and report an empty list.
-            native { nativeImagesPicked(emptyArray()) }
+            native { nativeImagesPicked(emptyArray(), 0) }
             return
         }
         runOnIo({ native { nativePickFailed() } }) {
-            val paths = copyToCache(uris)
-            if (paths.isEmpty()) {
-                native { nativePickFailed() }
-            } else {
-                native { nativeImagesPicked(paths.toTypedArray()) }
-            }
+            val copied = copyToCache(uris)
+            native { nativeImagesPicked(copied.paths.toTypedArray(), copied.failed) }
         }
     }
 
@@ -227,30 +248,110 @@ class MainActivity : NativeActivity() {
      * Copies each URI to `cacheDir/picked/img-<index>` (app-private, never named after the URI) and
      * returns the paths of the copies that succeeded. Runs on [io].
      */
-    private fun copyToCache(uris: List<Uri>): List<String> {
+    private data class Copied(val paths: List<String>, val failed: Int)
+
+    private fun copyToCache(uris: List<Uri>): Copied {
         val dir = File(cacheDir, "picked")
         dir.deleteRecursively()
         if (!dir.mkdirs()) {
             Log.e(TAG, "cannot create cache dir")
-            return emptyList()
+            return Copied(emptyList(), uris.size)
         }
         val paths = ArrayList<String>()
+        var failed = 0
         uris.forEachIndexed { index, uri ->
             val target = File(dir, "img-$index")
+            val temp = File(dir, "img-$index.tmp")
             try {
-                val input = contentResolver.openInputStream(uri) ?: throw java.io.IOException("no stream")
-                input.use { source -> target.outputStream().use { source.copyTo(it) } }
+                val mime = contentResolver.getType(uri)
+                if (mime == "image/jpeg" || mime == "image/png") {
+                    val input = contentResolver.openInputStream(uri) ?: throw IOException("no stream")
+                    input.use { source -> target.outputStream().use { source.copyTo(it) } }
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(target.absolutePath, bounds)
+                    if (bounds.outWidth > 0 && bounds.outHeight > 0 && fitScale(bounds.outWidth, bounds.outHeight) < 1.0) {
+                        transcode(ImageDecoder.createSource(target), temp, index)
+                        if (!target.delete() || !temp.renameTo(target)) throw IOException("cannot replace cache image")
+                    }
+                } else {
+                    transcode(ImageDecoder.createSource(contentResolver, uri), target, index)
+                    Log.i(TAG, "transcoded image $index")
+                }
                 paths.add(target.absolutePath)
             } catch (e: Exception) {
-                Log.e(TAG, "copy failed", e)
+                Log.e(TAG, "image $index failed: ${e.javaClass.simpleName}")
+                failed++
                 target.delete()
+                temp.delete()
+            } catch (e: OutOfMemoryError) {
+                Log.e(TAG, "image $index needs too much memory")
+                failed++
+                target.delete()
+                temp.delete()
             }
         }
-        return paths
+        return Copied(paths, failed)
+    }
+
+    /** Decode on [io] and write an upright sRGB image that Rust can read. */
+    private fun transcode(source: ImageDecoder.Source, target: File, index: Int) {
+        var retryScale = 1.0
+        var bitmap: Bitmap? = null
+        for (attempt in 0..MAX_DECODE_RETRIES) {
+            try {
+                bitmap = decodeForTranscode(source, retryScale, index)
+                break
+            } catch (e: IOException) {
+                // ImageDecoder can wrap native allocation failures in IOException rather than OOM.
+                if (attempt == MAX_DECODE_RETRIES || e.message?.contains("out of memory", ignoreCase = true) != true) throw e
+            } catch (e: OutOfMemoryError) {
+                if (attempt == MAX_DECODE_RETRIES) throw e
+            }
+            retryScale *= 0.5
+            Log.w(TAG, "image $index decode ran out of memory; retrying at scale $retryScale")
+        }
+        val decoded = bitmap ?: throw IOException("image decode failed")
+        try {
+            val format = if (decoded.hasAlpha()) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+            target.outputStream().use {
+                if (!decoded.compress(format, JPEG_QUALITY, it)) throw IOException("image compression failed")
+            }
+        } finally {
+            decoded.recycle()
+        }
+    }
+
+    private fun decodeForTranscode(source: ImageDecoder.Source, retryScale: Double, index: Int): Bitmap {
+        var downscaled = false
+        val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            decoder.setTargetColorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
+            val scale = fitScale(info.size.width, info.size.height) * retryScale
+            if (scale < 1.0) {
+                val width = floor(info.size.width * scale).toInt().coerceAtLeast(1)
+                val height = floor(info.size.height * scale).toInt().coerceAtLeast(1)
+                decoder.setTargetSize(width, height)
+                downscaled = true
+            }
+        }
+        if (downscaled) Log.i(TAG, "downscaled image $index to ${bitmap.width}x${bitmap.height}")
+        return bitmap
+    }
+
+    private fun fitScale(width: Int, height: Int): Double {
+        val pixels = width.toLong() * height.toLong()
+        return min(1.0, min(sqrt(MAX_PIXELS.toDouble() / pixels), min(MAX_EDGE.toDouble() / width, MAX_EDGE.toDouble() / height)))
     }
 
     private companion object {
         const val TAG = "dimuli"
         const val REQUEST_PICK = 1
+        const val KEY_COLLAGE_OPEN = "dimuli.collage_open"
+        /** Mirrors DECODE_MAX_PIXELS in collage-core/src/decode.rs. */
+        const val MAX_PIXELS = 64_000_000L
+        /** Mirrors DECODE_MAX_EDGE in collage-core/src/decode.rs. */
+        const val MAX_EDGE = 16_384
+        const val JPEG_QUALITY = 95
+        const val MAX_DECODE_RETRIES = 3
     }
 }

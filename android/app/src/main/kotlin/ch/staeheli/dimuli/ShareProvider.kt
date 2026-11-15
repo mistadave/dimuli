@@ -39,6 +39,7 @@ class ShareProvider : ContentProvider() {
         sortOrder: String?,
     ): Cursor {
         if (!isServed(uri)) throw FileNotFoundException("unknown uri")
+        if (!servedFile().exists()) throw FileNotFoundException("nothing shared")
         val columns = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
         val row = columns.map { column ->
             when (column) {

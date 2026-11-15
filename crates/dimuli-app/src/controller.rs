@@ -4,19 +4,23 @@
 //! Rules: the state is borrowed only for the duration of a single transition, never across a call into Slint,
 //! another callback or `invoke_from_event_loop`.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
+use std::time::Duration;
 
 use collage_core::{CoreError, ExportOptions, MAX_IMAGES, render};
 use slint::ComponentHandle;
 
 use crate::images;
 use crate::platform::{Platform, PlatformEvent};
-use crate::state::{AppState, BackOutcome, ExportAction, ExportJob};
+use crate::state::{AppState, BackOutcome, ExportAction, ExportJob, Screen};
 use crate::ui::{AppWindow, Backend, Theme};
 use crate::view::Models;
+
+/// How long a success message stays visible. Errors and notices stay until dismissed.
+const MESSAGE_HIDE_AFTER: Duration = Duration::from_secs(3);
 
 thread_local! {
     /// The controller of this (UI) thread, so events from other threads can find it.
@@ -43,6 +47,11 @@ pub(crate) struct Controller {
     platform: Rc<dyn Platform>,
     state: RefCell<AppState>,
     models: Models,
+    /// Hides success messages; restarted when a new success message appears.
+    message_timer: slint::Timer,
+    /// Sequence number of the success message the timer was started for.
+    armed_seq: Cell<Option<u64>>,
+    collage_open_pushed: Cell<Option<bool>>,
 }
 
 impl Controller {
@@ -53,10 +62,23 @@ impl Controller {
             platform,
             state: RefCell::new(AppState::new()),
             models: Models::new(),
+            message_timer: slint::Timer::default(),
+            armed_seq: Cell::new(None),
+            collage_open_pushed: Cell::new(None),
         });
         CURRENT.with(|current| *current.borrow_mut() = Rc::downgrade(&controller));
         // One source for the touch-target size: the theme. Rust needs it for divider hit-testing.
-        controller.state.borrow_mut().touch_target = window.global::<Theme>().get_touch_target();
+        let touch_target = window.global::<Theme>().get_touch_target();
+        let share_supported = controller.platform.share_supported();
+        let restored = controller.platform.restored_after_close();
+        {
+            let mut state = controller.state.borrow_mut();
+            state.touch_target = touch_target;
+            state.share_supported = share_supported;
+            if restored {
+                state.show_restart_notice();
+            }
+        }
         controller.models.attach(window);
         controller.connect(&window.global::<Backend>());
         controller.refresh();
@@ -84,19 +106,20 @@ impl Controller {
         on!(on_share_requested, |c| c.start_export(ExportAction::Share));
         on!(on_dismiss_message, |c| c.update(AppState::dismiss_message));
 
-        on!(on_canvas_resized, |c, w, h| c
-            .update(|s| s.set_canvas(w, h)));
+        on!(on_canvas_area_resized, |c, w, h| c
+            .update(|s| s.set_canvas_area(w, h)));
         on!(on_canvas_pressed, |c, x, y| c.update(|s| s.press(x, y)));
-        on!(on_canvas_moved, |c, x, y| c.update(|s| s.move_to(x, y)));
+        on!(on_canvas_moved, |c, x, y| c
+            .update_gesture(|s| s.move_to(x, y)));
         on!(on_canvas_released, |c, x, y| c.update(|s| s.release(x, y)));
         on!(on_canvas_cancelled, |c| c.update(AppState::cancel_gesture));
         on!(on_canvas_long_pressed, |c| c.update(AppState::long_press));
         on!(on_canvas_scrolled, |c, delta, x, y| c
-            .update(|s| s.scroll(delta, x, y)));
+            .update_gesture(|s| s.scroll(delta, x, y)));
         on!(on_canvas_pinch_started, |c| c
             .update(AppState::pinch_started));
         on!(on_canvas_pinched, |c, scale, x, y| c
-            .update(|s| s.pinch(scale, x, y)));
+            .update_gesture(|s| s.pinch(scale, x, y)));
 
         on!(on_template_selected, |c, i| c
             .update(|s| s.select_template(i)));
@@ -115,12 +138,69 @@ impl Controller {
         self.refresh();
     }
 
+    /// Fast path for pan, pinch and wheel events: rewrites only the changed cell rows. Falls back to a full
+    /// refresh when the transition raised a message or changed the screen, so those still reach the UI.
+    fn update_gesture(&self, transition: impl FnOnce(&mut AppState)) {
+        let (seq, screen) = {
+            let state = self.state.borrow();
+            (state.message_seq, state.screen)
+        };
+        let changed = {
+            let mut state = self.state.borrow_mut();
+            transition(&mut state);
+            state.message_seq != seq || state.screen != screen
+        };
+        if changed {
+            self.refresh();
+            return;
+        }
+        self.models.fill_gesture_rows(&self.state.borrow());
+        self.models.apply_gesture_rows();
+    }
+
     fn refresh(&self) {
         let Some(window) = self.window.upgrade() else {
             return;
         };
-        let snapshot = self.models.snapshot(&self.state.borrow());
+        let (snapshot, success_seq, open) = {
+            let state = self.state.borrow();
+            (
+                self.models.snapshot(&state),
+                state.success_seq(),
+                state.screen == Screen::Editor,
+            )
+        };
         self.models.apply(&window, snapshot);
+        if self.collage_open_pushed.get() != Some(open) {
+            self.collage_open_pushed.set(Some(open));
+            self.platform.set_collage_open(open);
+        }
+        self.arm_message_timer(success_seq);
+    }
+
+    /// Starts the hide timer for a new success message; stops it when there is none.
+    fn arm_message_timer(&self, success_seq: Option<u64>) {
+        match success_seq {
+            Some(seq) if self.armed_seq.get() != Some(seq) => {
+                self.armed_seq.set(Some(seq));
+                // The closure holds no `Rc`: it finds the controller through `CURRENT` (UI thread).
+                self.message_timer.start(
+                    slint::TimerMode::SingleShot,
+                    MESSAGE_HIDE_AFTER,
+                    move || {
+                        let controller = CURRENT.with(|current| current.borrow().upgrade());
+                        if let Some(controller) = controller {
+                            controller.update(|s| s.expire_message(seq));
+                        }
+                    },
+                );
+            }
+            Some(_) => {}
+            None => {
+                self.message_timer.stop();
+                self.armed_seq.set(None);
+            }
+        }
     }
 
     fn pick_images(&self) {
@@ -131,7 +211,7 @@ impl Controller {
     /// Reacts to something the platform reported.
     pub(crate) fn handle_platform_event(&self, event: PlatformEvent) {
         match event {
-            PlatformEvent::ImagesPicked(paths) => self.start_loading(paths),
+            PlatformEvent::ImagesPicked { paths, failed } => self.start_loading(paths, failed),
             PlatformEvent::PickFailed(message) => {
                 log::error!("picking images failed: {message}");
                 self.update(|s| s.show_error(message));
@@ -149,7 +229,7 @@ impl Controller {
     }
 
     /// Decodes the picked images in the background, then builds the collage.
-    fn start_loading(&self, mut paths: Vec<PathBuf>) {
+    fn start_loading(&self, mut paths: Vec<PathBuf>, failed: usize) {
         if paths.is_empty() {
             return; // cancelled by the user
         }
@@ -163,7 +243,7 @@ impl Controller {
 
         let spawned = images::load_in_background(paths, move |results| {
             post(move |controller| {
-                controller.update(|s| s.finish_loading(results, truncated));
+                controller.update(|s| s.finish_loading(results, truncated, failed));
             });
         });
         if let Err(error) = spawned {

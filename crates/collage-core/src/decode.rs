@@ -10,11 +10,13 @@ use image::{DynamicImage, ImageDecoder, ImageReader, Limits};
 use crate::error::CoreError;
 
 /// Images with more pixels are rejected before decoding (protects against manipulated files).
-pub const DECODE_MAX_PIXELS: u64 = 100_000_000;
-/// Longest accepted side in pixels (a strict decoder limit; also catches 1-pixel-wide giants).
+/// A 64 MP RGBA decode is 256,000,000 bytes; the export long edge is only 3000 px, and larger
+/// Android picks are downscaled on the Kotlin side.
+pub const DECODE_MAX_PIXELS: u64 = 64_000_000;
+/// Longest accepted side in pixels (also catches 1-pixel-wide giants).
 pub const DECODE_MAX_EDGE: u32 = 16_384;
-/// Memory a decoder may allocate at once.
-pub const DECODE_MAX_ALLOC: u64 = 512 * 1024 * 1024;
+/// Memory a decoded image buffer may take (also bounds 16-bit sources below the pixel budget).
+pub const DECODE_MAX_ALLOC: u64 = 256 * 1024 * 1024;
 
 /// Decodes the image at `path` and applies its EXIF orientation, so the result is upright.
 ///
@@ -40,8 +42,6 @@ pub fn decode_unoriented(path: &Path) -> Result<(DynamicImage, Orientation), Cor
         .with_guessed_format()
         .map_err(|e| fail(e.to_string()))?;
     let mut limits = Limits::default();
-    limits.max_image_width = Some(DECODE_MAX_EDGE);
-    limits.max_image_height = Some(DECODE_MAX_EDGE);
     limits.max_alloc = Some(DECODE_MAX_ALLOC);
     reader.limits(limits);
     let mut decoder = reader.into_decoder().map_err(|e| fail(e.to_string()))?;
@@ -50,12 +50,23 @@ pub fn decode_unoriented(path: &Path) -> Result<(DynamicImage, Orientation), Cor
     if width == 0 || height == 0 {
         return Err(CoreError::InvalidImageSize { width, height });
     }
-    if u64::from(width) * u64::from(height) > DECODE_MAX_PIXELS {
+    // Checked here (not via reader limits) so an over-long edge is reported as "too large".
+    if width > DECODE_MAX_EDGE
+        || height > DECODE_MAX_EDGE
+        || u64::from(width) * u64::from(height) > DECODE_MAX_PIXELS
+    {
+        return Err(CoreError::ImageTooLarge { width, height });
+    }
+    // `into_decoder` does not reserve the output buffer against `max_alloc`, so check it explicitly.
+    if decoder.total_bytes() > DECODE_MAX_ALLOC {
         return Err(CoreError::ImageTooLarge { width, height });
     }
     // A broken EXIF block must not make the image unusable.
     let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
-    let image = DynamicImage::from_decoder(decoder).map_err(|e| fail(e.to_string()))?;
+    let image = DynamicImage::from_decoder(decoder).map_err(|e| match e {
+        image::ImageError::Limits(_) => CoreError::ImageTooLarge { width, height },
+        other => fail(other.to_string()),
+    })?;
     Ok((image, orientation))
 }
 
@@ -173,30 +184,69 @@ pub(crate) mod tests {
 
     /// A PNG with signature, an IHDR announcing the given size and a stub IDAT; no pixel data.
     /// The decoder needs the IDAT header to finish reading the image info.
-    fn png_header_only(width: u32, height: u32) -> Vec<u8> {
+    fn png_header_only_with(width: u32, height: u32, bit_depth: u8, colour_type: u8) -> Vec<u8> {
         let mut ihdr = Vec::new();
         ihdr.extend_from_slice(&width.to_be_bytes());
         ihdr.extend_from_slice(&height.to_be_bytes());
-        ihdr.extend_from_slice(&[8, 2, 0, 0, 0]); // 8 bit RGB, no interlace
+        ihdr.extend_from_slice(&[bit_depth, colour_type, 0, 0, 0]); // no interlace
         let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
         out.extend_from_slice(&png_chunk(b"IHDR", &ihdr));
         out.extend_from_slice(&png_chunk(b"IDAT", &[0]));
         out
     }
 
-    fn decode_header_only(name: &str, width: u32, height: u32) -> Result<DynamicImage, CoreError> {
+    fn decode_bytes(name: &str, bytes: &[u8]) -> Result<DynamicImage, CoreError> {
         let path = temp_dir(name).join("h.png");
-        std::fs::write(&path, png_header_only(width, height)).unwrap();
+        std::fs::write(&path, bytes).unwrap();
         decode_image(&path)
     }
 
+    fn decode_header_only(name: &str, width: u32, height: u32) -> Result<DynamicImage, CoreError> {
+        decode_bytes(name, &png_header_only_with(width, height, 8, 2))
+    }
+
     #[test]
-    fn edge_beyond_limit_is_rejected_as_decode_error() {
-        // The decoder's width/height limit fires before our own checks.
+    fn edge_beyond_limit_is_image_too_large() {
         let r = decode_header_only("limit-edge", DECODE_MAX_EDGE + 1, 1);
-        assert!(matches!(r, Err(CoreError::ImageDecode { .. })), "{r:?}");
+        assert_eq!(
+            r.unwrap_err(),
+            CoreError::ImageTooLarge {
+                width: 16_385,
+                height: 1
+            }
+        );
         let r = decode_header_only("limit-edge-h", 1, DECODE_MAX_EDGE + 1);
-        assert!(matches!(r, Err(CoreError::ImageDecode { .. })), "{r:?}");
+        assert_eq!(
+            r.unwrap_err(),
+            CoreError::ImageTooLarge {
+                width: 1,
+                height: 16_385
+            }
+        );
+    }
+
+    #[test]
+    fn edge_at_limit_is_accepted() {
+        let r = decode_header_only("limit-edge-ok", DECODE_MAX_EDGE, 1);
+        assert!(!matches!(r, Err(CoreError::ImageTooLarge { .. })), "{r:?}");
+    }
+
+    #[test]
+    fn pixel_budget_allows_exactly_64_megapixels() {
+        let r = decode_header_only("limit-pixels-ok", 8_000, 8_000);
+        assert!(!matches!(r, Err(CoreError::ImageTooLarge { .. })), "{r:?}");
+    }
+
+    #[test]
+    fn pixel_budget_exceeded_by_one_column_is_image_too_large() {
+        let r = decode_header_only("limit-pixels-one", 8_001, 8_000);
+        assert_eq!(
+            r.unwrap_err(),
+            CoreError::ImageTooLarge {
+                width: 8_001,
+                height: 8_000
+            }
+        );
     }
 
     #[test]
@@ -207,6 +257,19 @@ pub(crate) mod tests {
             CoreError::ImageTooLarge {
                 width: 10_100,
                 height: 10_000
+            }
+        );
+    }
+
+    #[test]
+    fn decoded_buffer_beyond_alloc_limit_is_image_too_large() {
+        // 36 MP is within the pixel budget, but 16-bit RGBA decodes to 288,000,000 bytes.
+        let r = decode_bytes("limit-alloc", &png_header_only_with(6_000, 6_000, 16, 6));
+        assert_eq!(
+            r.unwrap_err(),
+            CoreError::ImageTooLarge {
+                width: 6_000,
+                height: 6_000
             }
         );
     }

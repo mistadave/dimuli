@@ -27,6 +27,8 @@ pub(crate) enum Screen {
 pub(crate) enum MessageKind {
     Error,
     Notice,
+    /// Confirms a finished action; hides itself after a short time.
+    Success,
 }
 
 /// A message for the user, shown in a dismissible banner.
@@ -34,6 +36,8 @@ pub(crate) enum MessageKind {
 pub(crate) struct Message {
     pub(crate) kind: MessageKind,
     pub(crate) text: String,
+    /// Unique per shown message, so a timer can hide only the message it was started for.
+    pub(crate) seq: u64,
 }
 
 /// What the finger or mouse on the canvas is currently doing.
@@ -123,10 +127,17 @@ pub(crate) struct AppState {
     /// `Some` while a background task runs; the overlay then blocks all input.
     pub(crate) busy: Option<Busy>,
     pub(crate) message: Option<Message>,
+    /// Sequence number of the last shown message.
+    pub(crate) message_seq: u64,
     pub(crate) templates: Vec<Template>,
     pub(crate) template_index: Option<usize>,
-    /// Canvas size in logical pixels as reported by the UI; zero until the first layout.
+    /// Space available for the canvas in logical pixels as reported by the UI; zero until the first layout.
+    pub(crate) canvas_area: Size,
+    /// Canvas size in logical pixels: the largest size with the collage's aspect that fits `canvas_area`.
+    /// Computed here (never by the UI) so the canvas and the cells always change in the same transition.
     pub(crate) canvas: Size,
+    /// `false` if the platform has no share sheet; checked before rendering.
+    pub(crate) share_supported: bool,
     /// Side of the square divider handles in pixels (the UI theme's touch-target size); set by the controller.
     pub(crate) touch_target: f32,
     pub(crate) confirm_back: bool,
@@ -141,9 +152,12 @@ impl AppState {
             images: ImageStore::default(),
             busy: None,
             message: None,
+            message_seq: 0,
             templates: Vec::new(),
             template_index: None,
+            canvas_area: Size::default(),
             canvas: Size::default(),
+            share_supported: true,
             touch_target: 0.0,
             confirm_back: false,
             gesture: Gesture::Idle,
@@ -152,24 +166,56 @@ impl AppState {
 
     // --- messages ---
 
-    pub(crate) fn show_error(&mut self, text: impl Into<String>) {
+    /// The one place that builds a message; every message gets a new sequence number.
+    fn show(&mut self, kind: MessageKind, text: String) {
+        self.message_seq = self.message_seq.wrapping_add(1);
         self.message = Some(Message {
-            kind: MessageKind::Error,
-            text: text.into(),
+            kind,
+            text,
+            seq: self.message_seq,
         });
+    }
+
+    pub(crate) fn show_error(&mut self, text: impl Into<String>) {
+        self.show(MessageKind::Error, text.into());
+    }
+
+    pub(crate) fn show_restart_notice(&mut self) {
+        log::error!("collage lost: the system closed the app while a collage was open");
+        self.show_error(texts::RESTARTED);
     }
 
     pub(crate) fn show_notice(&mut self, text: impl Into<String>) {
-        self.message = Some(Message {
-            kind: MessageKind::Notice,
-            text: text.into(),
-        });
+        self.show(MessageKind::Notice, text.into());
     }
 
-    /// Result of saving to the gallery: a notice on success, the platform's message on failure.
+    pub(crate) fn show_success(&mut self, text: impl Into<String>) {
+        self.show(MessageKind::Success, text.into());
+    }
+
+    /// Hides the success message with sequence number `seq`. A newer message, an error or a notice stays.
+    pub(crate) fn expire_message(&mut self, seq: u64) {
+        let expired = self
+            .message
+            .as_ref()
+            .is_some_and(|m| m.kind == MessageKind::Success && m.seq == seq);
+        if expired {
+            self.message = None;
+        }
+    }
+
+    /// Sequence number of the current message if it is a success message (the one that auto-hides).
+    pub(crate) fn success_seq(&self) -> Option<u64> {
+        self.message
+            .as_ref()
+            .filter(|m| m.kind == MessageKind::Success)
+            .map(|m| m.seq)
+    }
+
+    /// Result of saving to the gallery: a success message, the platform's message on failure.
     pub(crate) fn save_finished(&mut self, result: Result<(), String>) {
         match result {
-            Ok(()) => self.show_notice(texts::SAVED),
+            Ok(()) => self.show_success(texts::SAVED),
             Err(message) => {
                 log::error!("saving failed: {message}");
                 self.show_error(message);
@@ -226,15 +272,27 @@ impl AppState {
         &mut self,
         results: Vec<Result<LoadedImage, CoreError>>,
         truncated: bool,
+        failed_copies: usize,
     ) {
+        // A result that arrives after the app left the loading state (e.g. a recreated activity) is stale.
+        if self.busy != Some(Busy::Loading) {
+            log::warn!("late loading result dropped");
+            return;
+        }
         self.busy = None;
-        let total = results.len();
-        let metas: Vec<_> = results
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter_map(|loaded| self.images.insert(loaded))
-            .collect();
-        let skipped = total - metas.len();
+        let mut unreadable = failed_copies;
+        let mut too_large = 0usize;
+        let mut metas = Vec::new();
+        for result in results {
+            match result {
+                Ok(loaded) => match self.images.insert(loaded) {
+                    Some(meta) => metas.push(meta),
+                    None => unreadable += 1,
+                },
+                Err(CoreError::ImageTooLarge { .. }) => too_large += 1,
+                Err(_) => unreadable += 1,
+            }
+        }
 
         let templates = templates_for(metas.len());
         let collage = templates
@@ -248,18 +306,24 @@ impl AppState {
                 self.template_index = Some(0);
                 self.screen = Screen::Editor;
                 self.gesture = Gesture::Idle;
-                self.message = load_notice(skipped, truncated);
+                self.refit_canvas();
+                match load_notice(unreadable, too_large, truncated) {
+                    Some(text) => self.show_notice(text),
+                    None => self.message = None,
+                }
             }
             Err(error) => {
                 self.images.clear();
                 if !metas.is_empty() {
                     log::error!("cannot create collage: {error}");
                 }
-                self.show_error(if metas.is_empty() {
-                    texts::NO_IMAGES_LOADED
+                if !metas.is_empty() {
+                    self.show_error(texts::GENERIC_ERROR);
+                } else if unreadable == 0 && too_large > 0 {
+                    self.show_error(texts::images_too_large(too_large));
                 } else {
-                    texts::GENERIC_ERROR
-                });
+                    self.show_error(texts::NO_IMAGES_LOADED);
+                }
             }
         }
     }
@@ -271,6 +335,11 @@ impl AppState {
     /// depend on what happens in the UI afterwards.
     pub(crate) fn begin_export(&mut self, action: ExportAction) -> Option<ExportJob> {
         if self.busy.is_some() || self.screen != Screen::Editor {
+            return None;
+        }
+        if action == ExportAction::Share && !self.share_supported {
+            log::error!("sharing is not available on this platform");
+            self.show_error(texts::SHARE_UNAVAILABLE);
             return None;
         }
         let collage = self.collage.clone()?;
@@ -291,6 +360,11 @@ impl AppState {
     /// The busy state ends here, not when the platform answers: saving and sharing report back through
     /// [`PlatformEvent`](crate::platform::PlatformEvent)s and must not block the editor.
     pub(crate) fn finish_export(&mut self, result: Result<Vec<u8>, CoreError>) -> Option<Vec<u8>> {
+        // A stale result must neither unblock a different task nor hand an old JPEG to the platform.
+        if self.busy != Some(Busy::Exporting) {
+            log::warn!("late export result dropped");
+            return None;
+        }
         self.busy = None;
         match result {
             Ok(jpeg) => Some(jpeg),
@@ -342,12 +416,24 @@ impl AppState {
         self.gesture = Gesture::Idle;
         // Messages refer to the discarded collage.
         self.message = None;
+        self.refit_canvas();
     }
 
-    pub(crate) fn set_canvas(&mut self, width: f32, height: f32) {
+    /// Stores the space the UI offers for the canvas (invalid values are ignored) and refits the canvas.
+    pub(crate) fn set_canvas_area(&mut self, width: f32, height: f32) {
         if width.is_finite() && height.is_finite() && width >= 0.0 && height >= 0.0 {
-            self.canvas = Size::new(width, height);
+            self.canvas_area = Size::new(width, height);
+            self.refit_canvas();
         }
+    }
+
+    /// Recomputes the canvas size from the available area and the collage's aspect.
+    fn refit_canvas(&mut self) {
+        let collage_size = self
+            .collage
+            .as_ref()
+            .map_or(Size::new(1.0, 1.0), Collage::size);
+        self.canvas = view::fit_canvas(self.canvas_area, collage_size);
     }
 
     // --- gestures ---
@@ -618,6 +704,7 @@ impl AppState {
             .and_then(|i| AspectRatio::ALL.get(i).copied());
         if let (Some(aspect), Some(collage)) = (aspect, self.collage.as_mut()) {
             collage.set_aspect(aspect);
+            self.refit_canvas();
         }
     }
 
@@ -668,22 +755,39 @@ fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
 }
 
 /// Notice after loading, if something was skipped or cut off.
-fn load_notice(skipped: usize, truncated: bool) -> Option<Message> {
+fn load_notice(unreadable: usize, too_large: usize, truncated: bool) -> Option<String> {
     let mut parts = Vec::new();
-    if skipped > 0 {
-        parts.push(texts::images_skipped(skipped));
+    if unreadable > 0 {
+        parts.push(texts::images_skipped(unreadable));
+    }
+    if too_large > 0 {
+        parts.push(texts::images_too_large(too_large));
     }
     if truncated {
         parts.push(texts::too_many_images(MAX_IMAGES));
     }
-    (!parts.is_empty()).then(|| Message {
-        kind: MessageKind::Notice,
-        text: parts.join(" "),
-    })
+    (!parts.is_empty()).then(|| parts.join(" "))
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn restart_notice_is_a_persistent_error_on_the_start_screen() {
+        let mut state = super::AppState::new();
+        state.show_restart_notice();
+        assert_eq!(state.screen, super::Screen::Start);
+        let message = state.message.unwrap();
+        assert_eq!(message.kind, super::MessageKind::Error);
+        assert_eq!(message.text, crate::texts::RESTARTED);
+    }
+
+    #[test]
+    fn restart_notice_is_not_hidden_by_the_success_timer() {
+        let mut state = super::AppState::new();
+        state.show_restart_notice();
+        state.expire_message(state.message_seq);
+        assert_eq!(state.message.unwrap().text, crate::texts::RESTARTED);
+    }
     use super::*;
     use collage_core::collage::MAX_SPACING;
     use slint::{Rgba8Pixel, SharedPixelBuffer};
@@ -711,8 +815,9 @@ mod tests {
         state.finish_loading(
             sizes.iter().map(|&(w, h)| Ok(loaded(w, h))).collect(),
             false,
+            0,
         );
-        state.set_canvas(300.0, 300.0);
+        state.set_canvas_area(300.0, 300.0);
         state.touch_target = 48.0;
         state
     }
@@ -759,12 +864,136 @@ mod tests {
     }
 
     #[test]
-    fn saved_success_shows_saved_notice() {
+    fn saved_success_shows_success_message() {
         let mut state = AppState::new();
         state.save_finished(Ok(()));
+        assert_eq!(state.success_seq(), Some(state.message_seq));
+        let message = state.message.unwrap();
+        assert_eq!(message.kind, MessageKind::Success);
+        assert_eq!(message.text, texts::SAVED);
+    }
+
+    #[test]
+    fn expire_hides_the_success_message_it_was_armed_for() {
+        let mut state = AppState::new();
+        state.show_success("ok");
+        let seq = state.success_seq().unwrap();
+        state.expire_message(seq);
+        assert_eq!(state.message, None);
+        assert_eq!(state.success_seq(), None);
+    }
+
+    #[test]
+    fn expire_ignores_a_newer_message() {
+        let mut state = AppState::new();
+        state.show_success("first");
+        let old = state.success_seq().unwrap();
+        state.show_success("second");
+        state.expire_message(old);
+        assert_eq!(state.message.as_ref().unwrap().text, "second");
+    }
+
+    #[test]
+    fn expire_keeps_errors_and_notices() {
+        let mut state = AppState::new();
+        state.show_error("bad");
+        state.expire_message(state.message_seq);
+        assert_eq!(state.message.as_ref().unwrap().kind, MessageKind::Error);
+        state.show_notice("fyi");
+        state.expire_message(state.message_seq);
+        assert_eq!(state.message.as_ref().unwrap().kind, MessageKind::Notice);
+        assert_eq!(state.success_seq(), None);
+    }
+
+    #[test]
+    fn every_message_gets_a_new_seq() {
+        let mut state = AppState::new();
+        let mut seen = Vec::new();
+        state.show_error("a");
+        seen.push(state.message.as_ref().unwrap().seq);
+        state.show_notice("b");
+        seen.push(state.message.as_ref().unwrap().seq);
+        state.show_success("c");
+        seen.push(state.message.as_ref().unwrap().seq);
+        assert!(seen.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!(state.message_seq, seen[2]);
+    }
+
+    fn too_large() -> Result<LoadedImage, CoreError> {
+        Err(CoreError::ImageTooLarge {
+            width: 20000,
+            height: 20000,
+        })
+    }
+
+    #[test]
+    fn loading_reports_too_large_images_separately() {
+        let mut state = AppState::new();
+        state.begin_loading();
+        state.finish_loading(
+            vec![Ok(loaded(10, 10)), too_large(), Ok(loaded(20, 10))],
+            false,
+            0,
+        );
+        assert_eq!(state.screen, Screen::Editor);
+        assert_eq!(collage(&state).cells().len(), 2);
         let message = state.message.unwrap();
         assert_eq!(message.kind, MessageKind::Notice);
-        assert_eq!(message.text, texts::SAVED);
+        assert_eq!(message.text, texts::images_too_large(1));
+    }
+
+    #[test]
+    fn loading_reports_unreadable_and_too_large_together() {
+        let mut state = AppState::new();
+        state.begin_loading();
+        state.finish_loading(vec![Ok(loaded(10, 10)), broken(), too_large()], false, 0);
+        let text = state.message.unwrap().text;
+        assert!(text.contains(&texts::images_skipped(1)));
+        assert!(text.contains(&texts::images_too_large(1)));
+    }
+
+    #[test]
+    fn loading_only_too_large_images_explains_the_size() {
+        let mut state = AppState::new();
+        state.begin_loading();
+        state.finish_loading(vec![too_large(), too_large()], false, 0);
+        assert_eq!(state.screen, Screen::Start);
+        let message = state.message.unwrap();
+        assert_eq!(message.kind, MessageKind::Error);
+        assert_eq!(message.text, texts::images_too_large(2));
+
+        let mut state = AppState::new();
+        state.begin_loading();
+        state.finish_loading(vec![broken()], false, 0);
+        assert_eq!(state.message.unwrap().text, texts::NO_IMAGES_LOADED);
+    }
+
+    #[test]
+    fn late_loading_result_is_ignored_when_not_loading() {
+        let mut state = AppState::new();
+        state.finish_loading(vec![Ok(loaded(10, 10))], false, 0);
+        assert_eq!(state.screen, Screen::Start);
+        assert!(state.collage.is_none());
+        assert!(state.message.is_none());
+        assert!(state.busy.is_none());
+
+        state.busy = Some(Busy::Exporting);
+        state.finish_loading(vec![Ok(loaded(10, 10))], false, 0);
+        assert_eq!(state.screen, Screen::Start);
+        assert_eq!(state.busy, Some(Busy::Exporting));
+    }
+
+    #[test]
+    fn late_export_result_is_ignored_when_not_exporting() {
+        let mut state = editor(&[(40, 30)]);
+        assert_eq!(state.finish_export(Ok(vec![1])), None);
+        assert!(state.busy.is_none());
+        assert!(state.message.is_none());
+
+        state.busy = Some(Busy::Loading);
+        assert_eq!(state.finish_export(Err(CoreError::NoImages)), None);
+        assert_eq!(state.busy, Some(Busy::Loading));
+        assert!(state.message.is_none());
     }
 
     #[test]
@@ -799,6 +1028,7 @@ mod tests {
         state.finish_loading(
             vec![Ok(loaded(10, 10)), broken(), Ok(loaded(20, 10))],
             false,
+            0,
         );
         assert_eq!(state.screen, Screen::Editor);
         assert_eq!(collage(&state).cells().len(), 2);
@@ -808,10 +1038,20 @@ mod tests {
     }
 
     #[test]
+    fn loading_counts_failed_copies_as_unreadable() {
+        let mut state = AppState::new();
+        state.begin_loading();
+        state.finish_loading(vec![Ok(loaded(10, 10)), Ok(loaded(20, 10))], false, 1);
+        assert_eq!(state.screen, Screen::Editor);
+        assert_eq!(collage(&state).cells().len(), 2);
+        assert_eq!(state.message.unwrap().text, texts::images_skipped(1));
+    }
+
+    #[test]
     fn loading_only_broken_images_stays_on_start_with_error() {
         let mut state = AppState::new();
         state.begin_loading();
-        state.finish_loading(vec![broken(), broken()], false);
+        state.finish_loading(vec![broken(), broken()], false, 0);
         assert_eq!(state.screen, Screen::Start);
         assert!(state.collage.is_none());
         assert!(state.busy.is_none());
@@ -822,7 +1062,7 @@ mod tests {
     fn loading_nothing_shows_error() {
         let mut state = AppState::new();
         state.begin_loading();
-        state.finish_loading(Vec::new(), false);
+        state.finish_loading(Vec::new(), false, 0);
         assert_eq!(state.screen, Screen::Start);
         assert_eq!(state.message.unwrap().kind, MessageKind::Error);
     }
@@ -831,7 +1071,7 @@ mod tests {
     fn truncation_is_reported() {
         let mut state = AppState::new();
         state.begin_loading();
-        state.finish_loading(vec![Ok(loaded(10, 10))], true);
+        state.finish_loading(vec![Ok(loaded(10, 10))], true, 0);
         assert!(
             state
                 .message
@@ -886,7 +1126,7 @@ mod tests {
     fn going_back_clears_the_editor_message() {
         let mut state = AppState::new();
         state.begin_loading();
-        state.finish_loading(vec![Ok(loaded(10, 10)), broken()], false);
+        state.finish_loading(vec![Ok(loaded(10, 10)), broken()], false, 0);
         assert!(state.message.is_some());
         state.request_back();
         state.confirm_back();
@@ -1249,16 +1489,61 @@ mod tests {
     #[test]
     fn invalid_canvas_sizes_are_sanitized() {
         let mut state = AppState::new();
-        state.set_canvas(200.0, 100.0);
-        state.set_canvas(f32::NAN, 5.0);
-        state.set_canvas(-1.0, 5.0);
-        assert_eq!(state.canvas, Size::new(200.0, 100.0));
+        state.set_canvas_area(200.0, 100.0);
+        state.set_canvas_area(f32::NAN, 5.0);
+        state.set_canvas_area(-1.0, 5.0);
+        assert_eq!(state.canvas_area, Size::new(200.0, 100.0));
+        // No collage yet: a square canvas that fits the area.
+        assert_eq!(state.canvas, Size::new(100.0, 100.0));
+    }
+
+    #[test]
+    fn aspect_change_refits_canvas_and_cells_in_one_transition() {
+        let mut state = editor(&[(100, 100), (100, 100)]);
+        assert_eq!(state.canvas, Size::new(300.0, 300.0));
+        state.select_aspect(3);
+        let expected = view::fit_canvas(state.canvas_area, Size::new(1.0, 9.0 / 16.0));
+        assert_eq!(state.canvas, expected);
+        assert!((state.canvas.height - 168.75).abs() < 1e-3);
+        let views = view::cell_views(
+            collage(&state),
+            &state.images,
+            state.canvas,
+            SwapHighlight::default(),
+        );
+        assert_eq!(views.len(), 2);
+        for v in &views {
+            assert!(v.y + v.height <= state.canvas.height + 1e-3);
+            assert!(v.x + v.width <= state.canvas.width + 1e-3);
+        }
+        state.select_aspect(2);
+        assert!((state.canvas.width - 168.75).abs() < 1e-3);
+        assert!((state.canvas.height - 300.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn share_unsupported_reports_unavailable_without_export_job() {
+        let mut state = editor(&[(100, 100)]);
+        state.share_supported = false;
+        assert!(state.begin_export(ExportAction::Share).is_none());
+        assert_eq!(state.busy, None);
+        let message = state.message.as_ref().unwrap();
+        assert_eq!(message.kind, MessageKind::Error);
+        assert_eq!(message.text, texts::SHARE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn share_unsupported_still_allows_saving() {
+        let mut state = editor(&[(100, 100)]);
+        state.share_supported = false;
+        assert!(state.begin_export(ExportAction::Save).is_some());
+        assert_eq!(state.busy, Some(Busy::Exporting));
     }
 
     #[test]
     fn editing_without_collage_is_harmless() {
         let mut state = AppState::new();
-        state.set_canvas(100.0, 100.0);
+        state.set_canvas_area(100.0, 100.0);
         state.press(10.0, 10.0);
         state.move_to(80.0, 80.0);
         state.long_press();

@@ -3,7 +3,7 @@
 //! The core never sees pixels: one collage unit is the collage width, so the scale factor between the two
 //! worlds is simply the canvas width in pixels (see [`pixels_per_unit`]).
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use collage_core::collage::{MAX_CORNER_RADIUS, MAX_PADDING, MAX_SPACING};
@@ -13,8 +13,10 @@ use collage_core::{
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::images::ImageStore;
-use crate::state::{AppState, Busy, MessageKind};
-use crate::ui::{AppWindow, Backend, CellView, DividerView, Screen, TemplateRect, TemplateView};
+use crate::state::{AppState, Busy, Gesture, MessageKind};
+use crate::ui::{
+    AppWindow, Backend, CellView, DividerView, MessageStyle, Screen, TemplateRect, TemplateView,
+};
 
 /// Gap used for template previews, relative to the preview size.
 const TEMPLATE_PREVIEW_SPACING: f32 = 0.06;
@@ -44,6 +46,23 @@ pub(crate) fn pixels_per_unit(canvas: Size) -> f32 {
         canvas.width
     } else {
         0.0
+    }
+}
+
+/// The largest canvas with the collage's width/height ratio that fits into `area` (pixels). Empty (`0x0`)
+/// for a non-finite or non-positive area or collage size, so layout glitches never reach the cells.
+pub(crate) fn fit_canvas(area: Size, collage: Size) -> Size {
+    let valid = |v: f32| v.is_finite() && v > 0.0;
+    if !(valid(area.width) && valid(area.height) && valid(collage.width) && valid(collage.height)) {
+        return Size::default();
+    }
+    let ratio = collage.width / collage.height;
+    let width = area.width.min(area.height * ratio);
+    let height = width / ratio;
+    if valid(width) && valid(height) {
+        Size::new(width, height)
+    } else {
+        Size::default()
     }
 }
 
@@ -222,44 +241,63 @@ pub(crate) fn cell_views(
     canvas: Size,
     highlight: SwapHighlight,
 ) -> Vec<CellView> {
+    let mut out = Vec::new();
+    cell_views_into(&mut out, collage, images, canvas, highlight);
+    out
+}
+
+/// Like [`cell_views`], but clears and refills `out` so a gesture can reuse one buffer.
+pub(crate) fn cell_views_into(
+    out: &mut Vec<CellView>,
+    collage: &Collage,
+    images: &ImageStore,
+    canvas: Size,
+    highlight: SwapHighlight,
+) {
+    out.clear();
     let scale = pixels_per_unit(canvas);
     let radius = collage.style().corner_radius;
-    collage
-        .placements()
-        .into_iter()
-        .filter_map(|placement| {
-            let Some(stored) = images.get(placement.image) else {
-                log::error!("no preview for image {:?}", placement.image);
-                return None;
-            };
-            let rect = rect_to_pixels(placement.rect, scale);
-            let clip = clip_in_pixels(placement.crop, stored.preview_size);
-            Some(CellView {
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
-                image: stored.preview.clone(),
-                clip_x: clip.x,
-                clip_y: clip.y,
-                clip_width: clip.width,
-                clip_height: clip.height,
-                corner_radius: corner_radius_px(radius, rect, scale),
-                swap_source: highlight.source == Some(placement.cell),
-                swap_target: highlight.target == Some(placement.cell),
-            })
-        })
-        .collect()
+    for placement in collage.placements() {
+        let Some(stored) = images.get(placement.image) else {
+            log::error!("no preview for image {:?}", placement.image);
+            continue;
+        };
+        let rect = rect_to_pixels(placement.rect, scale);
+        let clip = clip_in_pixels(placement.crop, stored.preview_size);
+        out.push(CellView {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            image: stored.preview.clone(),
+            clip_x: clip.x,
+            clip_y: clip.y,
+            clip_width: clip.width,
+            clip_height: clip.height,
+            corner_radius: corner_radius_px(radius, rect, scale),
+            swap_source: highlight.source == Some(placement.cell),
+            swap_target: highlight.target == Some(placement.cell),
+        });
+    }
 }
 
 /// View entries for all dividers.
 pub(crate) fn divider_views(collage: &Collage, canvas: Size) -> Vec<DividerView> {
+    let mut out = Vec::new();
+    divider_views_into(&mut out, collage, canvas);
+    out
+}
+
+/// Like [`divider_views`], but clears and refills `out`.
+pub(crate) fn divider_views_into(out: &mut Vec<DividerView>, collage: &Collage, canvas: Size) {
+    out.clear();
     let scale = pixels_per_unit(canvas);
-    collage
-        .dividers()
-        .into_iter()
-        .map(|divider| divider_view(&divider, scale))
-        .collect()
+    out.extend(
+        collage
+            .dividers()
+            .into_iter()
+            .map(|divider| divider_view(&divider, scale)),
+    );
 }
 
 fn divider_view(divider: &Divider, scale: f32) -> DividerView {
@@ -278,14 +316,15 @@ pub(crate) struct Snapshot {
     screen: Screen,
     busy: bool,
     busy_text: &'static str,
-    message: Option<(String, bool)>,
+    message: Option<(String, MessageKind)>,
     confirm_back: bool,
     cells: Vec<CellView>,
     dividers: Vec<DividerView>,
     /// Set only when the template list changed.
     templates: Option<(Vec<String>, Vec<TemplateView>)>,
     active_template: i32,
-    canvas_aspect: f32,
+    canvas_width: f32,
+    canvas_height: f32,
     background: slint::Color,
     aspect_index: i32,
     spacing: f32,
@@ -301,6 +340,11 @@ pub(crate) struct Models {
     templates: Rc<VecModel<TemplateView>>,
     /// Names of the templates currently in `templates`.
     shown_templates: RefCell<Vec<String>>,
+    /// Reused row buffers of the gesture fast path.
+    cell_rows: RefCell<Vec<CellView>>,
+    divider_rows: RefCell<Vec<DividerView>>,
+    /// `divider_rows` holds fresh data that `dividers` does not show yet.
+    dividers_dirty: Cell<bool>,
 }
 
 impl Models {
@@ -310,6 +354,9 @@ impl Models {
             dividers: Rc::new(VecModel::default()),
             templates: Rc::new(VecModel::default()),
             shown_templates: RefCell::new(Vec::new()),
+            cell_rows: RefCell::new(Vec::new()),
+            divider_rows: RefCell::new(Vec::new()),
+            dividers_dirty: Cell::new(false),
         }
     }
 
@@ -347,10 +394,6 @@ impl Models {
         let style = state.collage.as_ref().map(Collage::style);
         let background = style.map_or(Rgba::WHITE, |s| s.background);
         let aspect = state.collage.as_ref().map(Collage::aspect);
-        let size = state
-            .collage
-            .as_ref()
-            .map_or(Size::new(1.0, 1.0), Collage::size);
         Snapshot {
             screen: match state.screen {
                 crate::state::Screen::Start => Screen::Start,
@@ -358,10 +401,7 @@ impl Models {
             },
             busy: state.busy.is_some(),
             busy_text: state.busy.map_or("", Busy::text),
-            message: state
-                .message
-                .as_ref()
-                .map(|m| (m.text.clone(), m.kind == MessageKind::Error)),
+            message: state.message.as_ref().map(|m| (m.text.clone(), m.kind)),
             confirm_back: state.confirm_back,
             cells,
             dividers,
@@ -379,11 +419,8 @@ impl Models {
                 .template_index
                 .and_then(|i| i32::try_from(i).ok())
                 .unwrap_or(-1),
-            canvas_aspect: if size.is_empty() {
-                1.0
-            } else {
-                size.width / size.height
-            },
+            canvas_width: state.canvas.width,
+            canvas_height: state.canvas.height,
             background: to_slint_color(background),
             aspect_index: aspect
                 .and_then(|a| collage_core::AspectRatio::ALL.iter().position(|&x| x == a))
@@ -400,6 +437,38 @@ impl Models {
         }
     }
 
+    /// Gesture fast path, step 1: refills the reused row buffers from `state`. Divider rows are only
+    /// refreshed while a divider is dragged; nothing else (messages, templates, properties) is touched.
+    pub(crate) fn fill_gesture_rows(&self, state: &AppState) {
+        let mut cells = self.cell_rows.borrow_mut();
+        let mut dividers = self.divider_rows.borrow_mut();
+        let Some(collage) = &state.collage else {
+            cells.clear();
+            dividers.clear();
+            self.dividers_dirty.set(true);
+            return;
+        };
+        cell_views_into(
+            &mut cells,
+            collage,
+            &state.images,
+            state.canvas,
+            state.swap_highlight(),
+        );
+        if matches!(state.gesture, Gesture::DraggingDivider { .. }) {
+            divider_views_into(&mut dividers, collage, state.canvas);
+            self.dividers_dirty.set(true);
+        }
+    }
+
+    /// Gesture fast path, step 2: writes only the rows that changed into the Slint models.
+    pub(crate) fn apply_gesture_rows(&self) {
+        sync_rows(&self.cells, &self.cell_rows.borrow());
+        if self.dividers_dirty.replace(false) {
+            sync_rows(&self.dividers, &self.divider_rows.borrow());
+        }
+    }
+
     /// Writes the snapshot into the window's properties and models.
     pub(crate) fn apply(&self, window: &AppWindow, snapshot: Snapshot) {
         let backend = window.global::<Backend>();
@@ -413,10 +482,13 @@ impl Models {
                 .map_or("", |m| m.0.as_str())
                 .into(),
         );
-        backend.set_message_is_error(snapshot.message.as_ref().is_some_and(|m| m.1));
+        backend.set_message_style(match snapshot.message.as_ref().map(|m| m.1) {
+            Some(MessageKind::Error) => MessageStyle::Error,
+            Some(MessageKind::Success) => MessageStyle::Success,
+            Some(MessageKind::Notice) | None => MessageStyle::Notice,
+        });
         backend.set_confirm_back_visible(snapshot.confirm_back);
         backend.set_active_template(snapshot.active_template);
-        backend.set_canvas_aspect(snapshot.canvas_aspect);
         backend.set_collage_background(snapshot.background);
         backend.set_aspect_index(snapshot.aspect_index);
         backend.set_spacing(snapshot.spacing);
@@ -424,6 +496,9 @@ impl Models {
         backend.set_corner_radius(snapshot.corner_radius);
         backend.set_background_index(snapshot.background_index);
 
+        // Canvas size and rows change in the same apply, so no frame mixes old cells with a new canvas.
+        backend.set_canvas_width(snapshot.canvas_width);
+        backend.set_canvas_height(snapshot.canvas_height);
         sync_model(&self.cells, snapshot.cells);
         sync_model(&self.dividers, snapshot.dividers);
         if let Some((names, views)) = snapshot.templates {
@@ -435,13 +510,19 @@ impl Models {
 
 /// Updates `model` in place: unchanged rows are left alone so Slint only redraws what changed.
 fn sync_model<T: Clone + PartialEq + 'static>(model: &VecModel<T>, items: Vec<T>) {
+    sync_rows(model, &items);
+}
+
+/// Slice version of [`sync_model`]: replaces the model only if the row count differs, otherwise sets just
+/// the rows that changed.
+fn sync_rows<T: Clone + PartialEq + 'static>(model: &VecModel<T>, items: &[T]) {
     if model.row_count() != items.len() {
-        model.set_vec(items);
+        model.set_vec(items.to_vec());
         return;
     }
-    for (row, item) in items.into_iter().enumerate() {
-        if model.row_data(row).as_ref() != Some(&item) {
-            model.set_row_data(row, item);
+    for (row, item) in items.iter().enumerate() {
+        if model.row_data(row).as_ref() != Some(item) {
+            model.set_row_data(row, item.clone());
         }
     }
 }
@@ -751,5 +832,104 @@ mod tests {
         let handles = divider_handles(&collage, Size::new(300.0, 300.0), 48.0);
         let c = handles[0].1.center();
         assert!(close(c.x, views[0].center_x) && close(c.y, views[0].center_y));
+    }
+
+    #[test]
+    fn fit_canvas_keeps_the_collage_ratio_inside_the_area() {
+        let area = Size::new(300.0, 300.0);
+        let square = fit_canvas(area, Size::new(1.0, 1.0));
+        assert!(close(square.width, 300.0) && close(square.height, 300.0));
+        let wide = fit_canvas(area, Size::new(1.0, 9.0 / 16.0));
+        assert!(close(wide.width, 300.0) && close(wide.height, 168.75));
+        let tall = fit_canvas(area, Size::new(1.0, 16.0 / 9.0));
+        assert!(close(tall.width, 168.75) && close(tall.height, 300.0));
+    }
+
+    #[test]
+    fn fit_canvas_is_empty_for_invalid_input() {
+        let ok = Size::new(1.0, 1.0);
+        let area = Size::new(100.0, 100.0);
+        assert_eq!(fit_canvas(Size::default(), ok), Size::default());
+        assert_eq!(fit_canvas(Size::new(f32::NAN, 5.0), ok), Size::default());
+        assert_eq!(fit_canvas(Size::new(-1.0, 5.0), ok), Size::default());
+        assert_eq!(fit_canvas(area, Size::new(1.0, 0.0)), Size::default());
+        assert_eq!(fit_canvas(area, Size::new(1.0, f32::NAN)), Size::default());
+        assert_eq!(
+            fit_canvas(area, Size::new(1.0, f32::INFINITY)),
+            Size::default()
+        );
+    }
+
+    fn three_image_editor() -> AppState {
+        let mut state = AppState::new();
+        assert!(state.begin_loading());
+        let results = (0..3)
+            .map(|i| {
+                Ok(LoadedImage {
+                    path: format!("{i}.png").into(),
+                    width: 128,
+                    height: 64,
+                    preview: SharedPixelBuffer::<Rgba8Pixel>::new(64, 32),
+                })
+            })
+            .collect();
+        state.finish_loading(results, false, 0);
+        state.set_canvas_area(300.0, 300.0);
+        state.touch_target = 48.0;
+        state
+    }
+
+    #[test]
+    fn gesture_rows_change_only_the_panned_cell() {
+        let mut state = three_image_editor();
+        let center = state.collage.as_ref().unwrap().placements()[0]
+            .rect
+            .center();
+        let (x, y) = (center.x * 300.0, center.y * 300.0);
+        // Zoom into cell 0 first: a fully visible image has no room to pan.
+        state.scroll(300.0, x, y);
+        let models = Models::new();
+        models.fill_gesture_rows(&state);
+        let before = models.cell_rows.borrow().clone();
+        assert_eq!(before.len(), 3);
+        state.press(x, y);
+        state.move_to(x + 30.0, y + 30.0);
+        assert!(matches!(state.gesture, Gesture::Panning { .. }));
+        models.fill_gesture_rows(&state);
+        let after = models.cell_rows.borrow().clone();
+        assert_eq!(after.len(), 3);
+        assert_ne!(before[0], after[0]);
+        assert_eq!(before[1], after[1]);
+        assert_eq!(before[2], after[2]);
+    }
+
+    #[test]
+    fn gesture_rows_reuse_their_buffer() {
+        let state = three_image_editor();
+        let models = Models::new();
+        models.fill_gesture_rows(&state);
+        let capacity = models.cell_rows.borrow().capacity();
+        let ptr = models.cell_rows.borrow().as_ptr();
+        models.fill_gesture_rows(&state);
+        assert_eq!(models.cell_rows.borrow().capacity(), capacity);
+        assert_eq!(models.cell_rows.borrow().as_ptr(), ptr);
+    }
+
+    #[test]
+    fn gesture_rows_include_dividers_only_while_dragging_a_divider() {
+        let mut state = three_image_editor();
+        let models = Models::new();
+        models.fill_gesture_rows(&state);
+        assert!(models.divider_rows.borrow().is_empty());
+        assert!(!models.dividers_dirty.get());
+
+        let divider = state.collage.as_ref().unwrap().dividers()[0];
+        let c = rect_to_pixels(divider.rect, 300.0).center();
+        state.press(c.x, c.y);
+        state.move_to(c.x + 12.0, c.y + 12.0);
+        assert!(matches!(state.gesture, Gesture::DraggingDivider { .. }));
+        models.fill_gesture_rows(&state);
+        assert!(!models.divider_rows.borrow().is_empty());
+        assert!(models.dividers_dirty.get());
     }
 }

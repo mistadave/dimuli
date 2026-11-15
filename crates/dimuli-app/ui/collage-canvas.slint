@@ -6,22 +6,22 @@ import { DividerHandle } from "divider-handle.slint";
 // Shows the collage fitted into the available area. Gestures are reported as raw pointer data in canvas pixels;
 // Rust decides what they mean (pan, zoom, swap).
 export component CollageCanvas inherits Rectangle {
+    changed width => {
+        Backend.canvas-area-resized(self.width, self.height);
+    }
+    changed height => {
+        Backend.canvas-area-resized(self.width, self.height);
+    }
+    init => {
+        Backend.canvas-area-resized(self.width, self.height);
+    }
+
     canvas := Rectangle {
-        width: max(0px, min(parent.width, parent.height * Backend.canvas-aspect));
-        height: Backend.canvas-aspect > 0 ? self.width / Backend.canvas-aspect : 0px;
+        width: Backend.canvas-width;
+        height: Backend.canvas-height;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         background: Backend.collage-background;
-
-        changed width => {
-            Backend.canvas-resized(self.width, self.height);
-        }
-        changed height => {
-            Backend.canvas-resized(self.width, self.height);
-        }
-        init => {
-            Backend.canvas-resized(self.width, self.height);
-        }
 
         for cell in Backend.cells: CellTile {
             cell: cell;

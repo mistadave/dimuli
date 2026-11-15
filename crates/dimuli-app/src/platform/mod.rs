@@ -21,6 +21,13 @@ pub trait Platform {
     fn pick_images(&self, max: usize);
     /// Stores a JPEG in the gallery. Answers with [`PlatformEvent::Saved`].
     fn save_to_gallery(&self, jpeg: Vec<u8>);
+    /// Whether [`Platform::share`] can open a share dialog. Checked before rendering, so a platform without
+    /// one answers at once instead of after an export.
+    fn share_supported(&self) -> bool;
+    /// Whether the system closed the previous process while a collage was open.
+    fn restored_after_close(&self) -> bool;
+    /// Reports whether a collage is currently open for saved-state detection.
+    fn set_collage_open(&self, open: bool);
     /// Opens the system share dialog for a JPEG. Answers with [`PlatformEvent::Shared`].
     fn share(&self, jpeg: Vec<u8>);
     /// Closes the app, e.g. after a back gesture on the start screen that the app did not use.
@@ -30,8 +37,8 @@ pub trait Platform {
 /// Something that happened outside the app's own UI.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlatformEvent {
-    /// Images chosen by the user (readable copies in the app cache on Android). Empty if cancelled.
-    ImagesPicked(Vec<PathBuf>),
+    /// Readable copies and the count of failed copies; empty paths and zero failures means cancelled.
+    ImagesPicked { paths: Vec<PathBuf>, failed: usize },
     /// Picking was not possible; carries a message for the user.
     PickFailed(String),
     /// Result of saving to the gallery; the error is a message for the user.

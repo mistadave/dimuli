@@ -1,4 +1,4 @@
-import { Screen, CellView, DividerView, TemplateView } from "types.slint";
+import { Screen, MessageStyle, CellView, DividerView, TemplateView } from "types.slint";
 
 // The only interface between the UI and Rust: properties flow in, callbacks flow out.
 export global Backend {
@@ -7,15 +7,16 @@ export global Backend {
     in property <bool> busy;
     in property <string> busy-text;
     in property <string> message-text;
-    in property <bool> message-is-error;
+    in property <MessageStyle> message-style: MessageStyle.notice;
     in property <bool> confirm-back-visible;
 
     in property <[CellView]> cells;
     in property <[DividerView]> dividers;
     in property <[TemplateView]> templates;
     in property <int> active-template: -1;
-    // Width / height of the collage.
-    in property <float> canvas-aspect: 1.0;
+    // Canvas size computed by Rust from the available area and the collage aspect.
+    in property <length> canvas-width;
+    in property <length> canvas-height;
     in property <color> collage-background: white;
 
     in property <int> aspect-index: -1;
@@ -37,7 +38,8 @@ export global Backend {
     callback share-requested();
     callback dismiss-message();
 
-    callback canvas-resized(length, length);
+    // The space available for the canvas (width, height).
+    callback canvas-area-resized(length, length);
     callback canvas-pressed(length, length);
     callback canvas-moved(length, length);
     callback canvas-released(length, length);

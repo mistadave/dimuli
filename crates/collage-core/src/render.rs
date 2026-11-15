@@ -425,7 +425,7 @@ mod tests {
         let dir = temp_dir("solid");
         let (mut collage, sources) = setup(&dir, &[solid(40, 30, RED), solid(30, 40, BLUE)]);
         collage.set_style(style(0.05, 0.05, 0.0));
-        let canvas = compose(&collage, &sources, opts(200)).unwrap();
+        let canvas = compose(&collage, &sources, opts(64)).unwrap();
         let placements = collage.placements();
         assert_eq!(placements.len(), 2);
         let colors = [RED, BLUE];
@@ -450,7 +450,7 @@ mod tests {
         let dir = temp_dir("nogap");
         let (mut collage, sources) = setup(&dir, &[solid(40, 30, RED), solid(30, 40, BLUE)]);
         collage.set_style(style(0.0, 0.0, 0.0));
-        let canvas = compose(&collage, &sources, opts(101)).unwrap();
+        let canvas = compose(&collage, &sources, opts(63)).unwrap();
         for p in canvas.pixels() {
             assert!(p.0 != BG_PX, "background pixel found");
         }
@@ -489,15 +489,15 @@ mod tests {
         let dir = temp_dir("radius");
         let (mut collage, sources) = setup(&dir, &[solid(30, 30, RED)]);
         collage.set_style(style(0.0, 0.0, 0.1));
-        let canvas = compose(&collage, &sources, opts(200)).unwrap();
+        let canvas = compose(&collage, &sources, opts(64)).unwrap();
         assert_color(px(&canvas, 0, 0), BG_PX);
-        assert_color(px(&canvas, 199, 199), BG_PX);
-        assert_color(px(&canvas, 100, 100), RED);
+        assert_color(px(&canvas, 63, 63), BG_PX);
+        assert_color(px(&canvas, 32, 32), RED);
         // Straight edges away from the corners stay filled.
-        assert_color(px(&canvas, 100, 0), RED);
+        assert_color(px(&canvas, 32, 0), RED);
         // Antialiasing: a pixel on the arc is a mix, neither pure background nor pure image.
-        let mixed = (0..20)
-            .flat_map(|y| (0..20).map(move |x| (x, y)))
+        let mixed = (0..8)
+            .flat_map(|y| (0..8).map(move |x| (x, y)))
             .map(|(x, y)| px(&canvas, x, y))
             .any(|p| p != BG_PX && p != RED);
         assert!(mixed, "no antialiased edge pixel in the corner");
@@ -566,10 +566,10 @@ mod tests {
         let dir = temp_dir("jpeg");
         let (mut collage, sources) = setup(&dir, &[solid(40, 30, RED), solid(30, 40, BLUE)]);
         collage.set_aspect(AspectRatio::Portrait4x5);
-        let bytes = render(&collage, &sources, opts(100)).unwrap();
+        let bytes = render(&collage, &sources, opts(60)).unwrap();
         assert_eq!(bytes.get(..2), Some(&[0xFF, 0xD8][..]));
         let jpeg = image::load_from_memory(&bytes).unwrap();
-        assert_eq!((jpeg.width(), jpeg.height()), (80, 100));
+        assert_eq!((jpeg.width(), jpeg.height()), (48, 60));
     }
 
     #[test]
@@ -585,8 +585,8 @@ mod tests {
             .map(|i| solid(16, 12, [i * 20, 100, 50]))
             .collect();
         let (collage, sources) = setup(&dir, &imgs);
-        let canvas = compose(&collage, &sources, opts(90)).unwrap();
-        assert_eq!(canvas.width(), 90);
+        let canvas = compose(&collage, &sources, opts(63)).unwrap();
+        assert_eq!(canvas.width(), 63);
     }
 
     #[test]

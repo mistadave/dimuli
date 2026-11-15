@@ -27,10 +27,28 @@ fn android_main(app: AndroidApp) {
         log::error!("cannot init slint: {error}");
         return;
     }
-    let platform = AndroidPlatform { app };
+    let mut platform = AndroidPlatform {
+        app,
+        collage_lost: false,
+    };
     if let Err(error) = platform.register_natives() {
         log::error!("cannot register native methods: {error}");
     }
+    platform.collage_lost = match platform.with_activity(|env, activity| {
+        env.call_method(
+            activity,
+            jni_str!("collageLostOnRestart"),
+            jni_sig!(() -> jboolean),
+            &[],
+        )?
+        .z()
+    }) {
+        Ok(value) => value,
+        Err(error) => {
+            log::error!("cannot read restart status: {error}");
+            false
+        }
+    };
     // Strictly after `slint::android::init`: Slint registers its own back callback on API >= 34
     // and the last registered callback wins.
     platform.call_void(jni_str!("installBackCallback"));
@@ -43,6 +61,7 @@ fn android_main(app: AndroidApp) {
 /// can run again in the same process after `finish()`.
 pub(crate) struct AndroidPlatform {
     app: AndroidApp,
+    collage_lost: bool,
 }
 
 impl AndroidPlatform {
@@ -123,6 +142,29 @@ impl Platform for AndroidPlatform {
         }
     }
 
+    fn share_supported(&self) -> bool {
+        true
+    }
+
+    fn restored_after_close(&self) -> bool {
+        self.collage_lost
+    }
+
+    fn set_collage_open(&self, open: bool) {
+        let result = self.with_activity(|env, activity| {
+            env.call_method(
+                activity,
+                jni_str!("setCollageOpen"),
+                jni_sig!((open: jboolean) -> void),
+                &[JValue::Bool(open)],
+            )?;
+            Ok(())
+        });
+        if let Err(error) = result {
+            log::error!("cannot set collage state: {error}");
+        }
+    }
+
     fn share(&self, jpeg: Vec<u8>) {
         if let Err(error) = self.hand_over(jni_str!("share"), &jpeg) {
             log::error!("cannot open the share sheet: {error}");
@@ -144,7 +186,7 @@ const NATIVES: [jni::NativeMethod<'static>; 5] = [
         error_policy = LogErrorAndDefault
     },
     native_method! {
-        fn native_images_picked(paths: java.lang.String[]),
+        fn native_images_picked(paths: java.lang.String[], failed: jint),
         fn = native_images_picked,
         error_policy = LogErrorAndDefault
     },
@@ -179,18 +221,22 @@ fn native_images_picked<'local>(
     env: &mut Env<'local>,
     _this: JObject<'local>,
     paths: JObjectArray<'local, JString<'local>>,
+    failed: i32,
 ) -> jni::errors::Result<()> {
     let count = paths.len(env)?;
     let mut list = Vec::with_capacity(count);
     for index in 0..count {
         list.push(paths.get_element(env, index)?.try_to_string(env)?);
     }
-    log::info!("picked images: {}", list.len());
-    post_event(images_picked_event(list));
+    log::info!("picked images: {}, failed copies: {failed}", list.len());
+    if failed > 0 {
+        log::error!("{failed} picked images could not be copied");
+    }
+    post_event(images_picked_event(list, failed));
     Ok(())
 }
 
-/// Kotlin could not start the photo picker or copy any picked image.
+/// Kotlin could not start the photo picker or its I/O worker.
 fn native_pick_failed<'local>(
     _env: &mut Env<'local>,
     _this: JObject<'local>,

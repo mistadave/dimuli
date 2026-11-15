@@ -1,10 +1,12 @@
+import { MessageStyle } from "types.slint";
 import { Theme } from "theme.slint";
 import { Backend } from "backend.slint";
 import { AppButton } from "app-button.slint";
 
 export component MessageBanner inherits Rectangle {
     visible: Backend.message-text != "";
-    background: Backend.message-is-error ? Theme.error : Theme.notice;
+    background: Backend.message-style == MessageStyle.error ? Theme.error
+        : Backend.message-style == MessageStyle.success ? Theme.success : Theme.notice;
     border-radius: Theme.radius-s;
     height: self.visible ? row.preferred-height : 0px;
 
@@ -17,7 +19,8 @@ export component MessageBanner inherits Rectangle {
             wrap: word-wrap;
             font-size: Theme.font-m;
             vertical-alignment: center;
-            color: Backend.message-is-error ? Theme.on-error : Theme.on-notice;
+            color: Backend.message-style == MessageStyle.error ? Theme.on-error
+                : Backend.message-style == MessageStyle.success ? Theme.on-success : Theme.on-notice;
         }
         AppButton {
             width: Theme.touch-target;

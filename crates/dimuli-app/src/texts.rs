@@ -2,6 +2,7 @@
 //! Messages say what happened and what the user can do, without technical details.
 
 pub(crate) const LOADING: &str = "Bilder werden geladen …";
+pub(crate) const RESTARTED: &str = "Die App wurde vom System geschlossen. Die Collage konnte nicht erhalten bleiben. Wähle die Bilder bitte erneut aus.";
 pub(crate) const NO_IMAGES_LOADED: &str =
     "Die Bilder konnten nicht geladen werden. Bitte wähle andere Dateien aus.";
 pub(crate) const GENERIC_ERROR: &str =
@@ -18,15 +19,28 @@ pub(crate) const PICK_FAILED: &str =
 #[cfg(any(target_os = "android", test))]
 pub(crate) const SHARE_FAILED: &str =
     "Die Collage konnte nicht geteilt werden. Bitte versuche es noch einmal.";
-pub(crate) const SHARE_UNAVAILABLE: &str = "Teilen ist auf diesem Gerät nicht verfügbar.";
+pub(crate) const SHARE_UNAVAILABLE: &str =
+    "Teilen ist auf diesem Gerät nicht verfügbar. Speichere die Collage stattdessen.";
 pub(crate) const SAVED: &str = "Collage gespeichert.";
 
 /// Notice after some of the chosen files could not be read.
 pub(crate) fn images_skipped(count: usize) -> String {
     if count == 1 {
-        "Ein Bild konnte nicht geladen werden und wurde übersprungen.".to_owned()
+        "Ein Bild konnte nicht gelesen werden und wurde übersprungen. Wähle bei Bedarf ein anderes Bild aus."
+            .to_owned()
     } else {
-        format!("{count} Bilder konnten nicht geladen werden und wurden übersprungen.")
+        format!(
+            "{count} Bilder konnten nicht gelesen werden und wurden übersprungen. Wähle bei Bedarf andere Bilder aus."
+        )
+    }
+}
+
+/// Notice (or error, if nothing else was usable) after images exceeded the size limits.
+pub(crate) fn images_too_large(count: usize) -> String {
+    if count == 1 {
+        "Ein Bild ist zu groß und wurde übersprungen. Wähle ein kleineres Bild aus.".to_owned()
+    } else {
+        format!("{count} Bilder sind zu groß und wurden übersprungen. Wähle kleinere Bilder aus.")
     }
 }
 
@@ -59,5 +73,30 @@ mod tests {
             EXPORT_SOURCE_UNREADABLE
         );
         assert_eq!(export_error(&CoreError::Encode("x".into())), GENERIC_ERROR);
+    }
+
+    #[test]
+    fn failure_texts_say_what_happened_and_what_to_do() {
+        let texts = [
+            NO_IMAGES_LOADED.to_owned(),
+            RESTARTED.to_owned(),
+            GENERIC_ERROR.to_owned(),
+            EXPORT_SOURCE_UNREADABLE.to_owned(),
+            SAVE_FAILED.to_owned(),
+            PICK_FAILED.to_owned(),
+            SHARE_FAILED.to_owned(),
+            SHARE_UNAVAILABLE.to_owned(),
+            images_skipped(1),
+            images_skipped(3),
+            images_too_large(1),
+            images_too_large(2),
+        ];
+        for text in &texts {
+            let sentences = text.matches(". ").count() + usize::from(text.ends_with('.'));
+            assert!(sentences >= 2, "needs two sentences: {text}");
+            for marker in ["Error", "error", "panic", "JNI", "Exception", "{"] {
+                assert!(!text.contains(marker), "technical marker in: {text}");
+            }
+        }
     }
 }

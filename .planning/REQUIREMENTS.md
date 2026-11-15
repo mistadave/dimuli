@@ -62,7 +62,7 @@ Requirements for the first release. v1 success metric: on a real Android 16 devi
 - [ ] **PERF-01**: Large photos (e.g. 12 MP and above from a real device camera) load, edit and export without crash, out-of-memory or visible gesture stutter; pointer events during a gesture update only the affected cells (no full snapshot allocation); loading avoids the unnecessary pixel-buffer copy; the `DECODE_MAX_PIXELS` value for devices (100 MP vs 64 MP) is decided and recorded
 - [ ] **ERRM-01**: Every failure path (unreadable image, pick failure, export, save, share) shows a short German message that says what happened and what the user can do, without technical details, and logs the error with `log::error!`
 - [ ] **POLI-01**: Changing the aspect ratio shows no intermediate one-frame flicker (M3 review note)
-- [ ] **POLI-02**: Render tests use output sizes of at most 64 px as required by the coding guidelines, and desktop "Teilen" reports "nicht verfügbar" immediately instead of rendering the collage first (M4 review notes)
+- [x] **POLI-02**: Render tests use output sizes of at most 64 px as required by the coding guidelines, and desktop "Teilen" reports "nicht verfügbar" immediately instead of rendering the collage first (M4 review notes)
 - [ ] **ACPT-01**: On a real Android 16 device, a user can create a collage from 1-9 images and save it to the gallery, and the saved image appears in the gallery app (v1 success metric)
 
 ## Post-v1 Requirements (committed, Phase 8)
@@ -143,7 +143,7 @@ Which phases cover which requirements. Phase N corresponds to `docs/PLAN.md` mil
 | PERF-01 | Phase 6 | Pending |
 | ERRM-01 | Phase 6 | Pending |
 | POLI-01 | Phase 6 | Pending |
-| POLI-02 | Phase 6 | Pending |
+| POLI-02 | Phase 6 | Complete |
 | ACPT-01 | Phase 6 | Pending |
 | ENV-03 | Phase 7 | Pending |
 | MANY-01 | Phase 8 | Pending |

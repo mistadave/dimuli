@@ -26,7 +26,10 @@ fn pick_event(paths: &[PathBuf]) -> PlatformEvent {
     if paths.is_empty() {
         PlatformEvent::PickFailed(texts::NO_IMAGE_ARGUMENTS.to_owned())
     } else {
-        PlatformEvent::ImagesPicked(paths.to_vec())
+        PlatformEvent::ImagesPicked {
+            paths: paths.to_vec(),
+            failed: 0,
+        }
     }
 }
 
@@ -48,6 +51,16 @@ impl Platform for DesktopPlatform {
         });
         post_event(PlatformEvent::Saved(result));
     }
+
+    fn share_supported(&self) -> bool {
+        false
+    }
+
+    fn restored_after_close(&self) -> bool {
+        false
+    }
+
+    fn set_collage_open(&self, _open: bool) {}
 
     fn share(&self, _jpeg: Vec<u8>) {
         post_event(PlatformEvent::Shared(Err(
@@ -177,11 +190,20 @@ mod tests {
 
     #[test]
     fn pick_returns_all_given_paths() {
-        assert_eq!(pick_event(&paths(2)), PlatformEvent::ImagesPicked(paths(2)));
+        assert_eq!(
+            pick_event(&paths(2)),
+            PlatformEvent::ImagesPicked {
+                paths: paths(2),
+                failed: 0
+            }
+        );
         // More than allowed: cutting and telling the user is the controller's job.
         assert_eq!(
             pick_event(&paths(12)),
-            PlatformEvent::ImagesPicked(paths(12))
+            PlatformEvent::ImagesPicked {
+                paths: paths(12),
+                failed: 0
+            }
         );
     }
 
