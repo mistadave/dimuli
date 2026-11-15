@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Android Shell** - Gradle project, Kotlin activity, JNI bridge, Photo Picker, MediaStore, sharing; running in the emulator and on a device
 - [x] **Phase 6: Polish and v1 Acceptance** - Lifecycle, performance with large images, error messages, open review notes, real-device acceptance
 - [x] **Phase 7: Developer Docs for the Android Build** - Replace `cargo-apk` commands in `CLAUDE.md` with the `cargo ndk` + Gradle flow
-- [ ] **Phase 8: More Than 9 Images** - Grid generator for counts above 9; raise `MAX_IMAGES` to 36 (D-06)
+- [x] **Phase 8: More Than 9 Images** - Grid generator for counts above 9; raise `MAX_IMAGES` to 36 (D-06)
 
 ## Phase Details
 
@@ -138,12 +138,12 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Core: freeze 1-9 (legacy copy, raw-style geometry, green first), effective style `4/n` from 5 cells per line via `Collage::effective_style()` for geometry, drags and export (D-01..D-04)
-- [ ] 08-02-PLAN.md — Core: grid generator for 10-36 (two most balanced line counts, max 6 templates), `MAX_IMAGES` = 36 (D-06), validity and drag matrix for every format and style
-- [ ] 08-03-PLAN.md — App: preview edge by count, effective radius in the preview, scaled thumbnails, D-05/D-06 handle tests, loading overlay from "Bilder wählen" until the picker answers (D-08)
-- [ ] 08-04-PLAN.md — Emulator: 12 and 25 photos via the Photo Picker (load, divider drags, pan, swap, template, 16:9, save), peak memory, times, D-08 cancel and repeated taps
-- [ ] 08-05-PLAN.md — Code review + critical fixes, full gates, docs record the cap, preview budget, effective style and pick flow as built
-- [ ] 08-06-PLAN.md — Owner check on desktop (36 images), emulator or phone; cap 36 confirmed; milestone 8 ticked
+- [x] 08-01-PLAN.md — Core: freeze 1-9 (legacy copy, raw-style geometry, green first), effective style `4/n` from 5 cells per line via `Collage::effective_style()` for geometry, drags and export (D-01..D-04)
+- [x] 08-02-PLAN.md — Core: grid generator for 10-36 (two most balanced line counts, max 6 templates), `MAX_IMAGES` = 36 (D-06), validity and drag matrix for every format and style
+- [x] 08-03-PLAN.md — App: preview edge by count, effective radius in the preview, scaled thumbnails, D-05/D-06 handle tests, loading overlay from "Bilder wählen" until the picker answers (D-08)
+- [x] 08-04-PLAN.md — Emulator: 12 and 25 photos via the Photo Picker (load, divider drags, pan, swap, template, 16:9, save), peak memory, times, D-08 cancel and repeated taps
+- [x] 08-05-PLAN.md — Code review + critical fixes, full gates, docs record the cap, preview budget, effective style and pick flow as built
+- [x] 08-06-PLAN.md — Owner check on desktop (36 images), emulator or phone; cap 36 confirmed; milestone 8 ticked
 **UI hint**: yes
 
 ## Progress
@@ -160,4 +160,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Android Shell | 8/8 | Complete | 2026-11-15 |
 | 6. Polish and v1 Acceptance | 8/8 | Complete | 2026-11-15 |
 | 7. Developer Docs for the Android Build | 1/1 | Complete | 2026-11-15 |
-| 8. More Than 9 Images | 0/6 | Not started | - |
+| 8. More Than 9 Images | 6/6 | Complete | 2026-11-15 |

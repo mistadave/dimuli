@@ -69,7 +69,7 @@ Bei Konflikten gilt: diese Datei > allgemeine Konventionen. Abweichungen nur mit
   (jni 0.22). `AndroidApp` und die Activity nie in einem `static` halten.
 
 ### Performance und Speicher
-- Bilder nie mehrfach in voller Auflösung im Speicher halten. UI arbeitet mit Vorschaubildern (max. 2048 px Kante).
+- Bilder nie mehrfach in voller Auflösung im Speicher halten. UI arbeitet mit Vorschaubildern (max. 2048 px Kante, ab 10 Bildern kleiner; Gesamtbudget wie bei 9 Bildern).
 - Teure Arbeit (Dekodieren, Export) nicht im UI-Thread: eigener Thread, Ergebnis via `invoke_from_event_loop`.
 - Keine Allokationen pro Frame in Gesten-Handlern, wenn vermeidbar; Models gezielt aktualisieren statt neu aufbauen.
 

@@ -3,7 +3,7 @@ phase: "8"
 slug: "more-than-9-images"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
+status: validated
 nyquist_compliant: true
 wave_0_complete: false
 created: "2026-11-15"
@@ -41,20 +41,20 @@ created: "2026-11-15"
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 8-01-01 | 01 | 1 | MANY-01 | T-08-01 | Style factor finite and exactly 1.0 up to 4 cells per line; 1-9 geometry bit-identical | unit (Wave 0 freeze, then tracer) | `cargo test -p collage-core --lib one_to_nine` and `cargo test -p collage-core --lib effective` | ❌ W0 (task creates) | ⬜ pending |
-| 8-01-02 | 01 | 1 | MANY-01 | T-08-02 | Dense drags use the same spacing as placements, stop at MIN_CELL_SIZE | unit (tdd) | `cargo test -p collage-core --lib -- max_cells_per_line style_scale effective dense` | ❌ (task creates) | ⬜ pending |
-| 8-02-01 | 02 | 2 | MANY-01, MANY-02 | T-08-03 | Cap 36 enforced in the core (TooManyImages, no templates above) | unit (tracer) | `cargo test -p collage-core --lib many_images` | ❌ (task creates) | ⬜ pending |
-| 8-02-02 | 02 | 2 | MANY-01 | T-08-04 | Drags on cells below MIN_CELL_SIZE are no-ops, never panic or overlap | unit (tdd) | `cargo test -p collage-core --lib many_images` (at least 7 passed) | ❌ (task creates) | ⬜ pending |
-| 8-03-01 | 03 | 3 | MANY-02, MANY-03 | T-08-05, T-08-08 | Preview pixels capped at the 9-image budget; log line without paths | unit (tracer) + desktop start | `cargo test -p dimuli-app --lib -- preview_max_edge preview_respects many_images too_many_images`; display-aware start gate: `grep -qx 'exit 124' android/build/smoke/p8-03-desktop-start.txt` and no panic in `p8-03-desktop-stderr.txt` when a `DISPLAY`/`WAYLAND_DISPLAY` is recorded in it (none recorded: reported as not evaluated, not a failure) | ❌ (task creates) | ⬜ pending |
-| 8-03-02 | 03 | 3 | MANY-03 | — | N/A (view geometry: D-05 handles, D-06 free area, radius, thumbnails) | unit (tdd) | `cargo test -p dimuli-app --lib -- template_previews effective_corner divider_handles_stay free_area` | ❌ (task creates) | ⬜ pending |
-| 8-03-03 | 03 | 3 | MANY-03 | T-08-06, T-08-07 | No second pick while copying; overlay never sticks after cancel or failure (D-08) | unit (tdd) + Android lint | `cargo test -p dimuli-app --lib state::tests::pick_` | ❌ (task creates) | ⬜ pending |
-| 8-04-01 | 04 | 4 | MANY-02, MANY-03 | T-08-09, T-08-10 | 12 photos within VmHWM below 1 GiB; picker cancel releases the overlay | emulator (scripted adb) | `grep -q 'picked images: 12, failed copies: 0' android/build/smoke/p8-04-12-logcat.txt` (+ smoke, focus, crash and VmHWM gates in the plan) | ❌ (task creates evidence) | ⬜ pending |
-| 8-04-02 | 04 | 4 | MANY-03 | T-08-10 | 25 photos within VmHWM below 1 GiB; exactly one pick despite repeated taps | emulator (scripted adb) | `grep -q 'collage ready: 25 images' android/build/smoke/p8-04-25-logcat.txt` (+ focus, screenshot-diff and VmHWM gates in the plan) | ❌ (task creates evidence) | ⬜ pending |
-| 8-05-01 | 05 | 5 | MANY-01, MANY-02, MANY-03 | T-08-11, T-08-SC | Review findings fixed; no manifest or Android source change | review + full gates | full suite + Android lint; `grep -q 'APK CHECK OK' android/build/smoke/p8-05-check-apk.txt` | ❌ (task creates) | ⬜ pending |
-| 8-05-02 | 05 | 5 | MANY-01, MANY-02, MANY-03 | T-08-12 | Docs record the limits and behaviour as built | doc greps | `grep -cE '^\| .MAX_IMAGES. \| 36 \|' docs/ARCHITECTURE.md` (+ the other doc gates in the plan) | ✅ docs exist | ⬜ pending |
-| 8-06-01 | 06 | 6 | MANY-01, MANY-02, MANY-03 | T-08-13 | Only smoke on the owner's phone | desktop start + smoke | display-aware start gate: `grep -qx 'exit 124' android/build/smoke/p8-06-desktop-start.txt` and no panic in `p8-06-desktop-stderr.txt` when a `DISPLAY`/`WAYLAND_DISPLAY` is recorded in it (none recorded: reported as not evaluated, not a failure) | ❌ (task creates evidence) | ⬜ pending |
-| 8-06-02 | 06 | 6 | MANY-01, MANY-02, MANY-03 | T-08-14 | Owner's photos never touched by automation | manual (owner checkpoint) | — (see Manual-Only Verifications) | n/a | ⬜ pending |
-| 8-06-03 | 06 | 6 | MANY-01, MANY-02, MANY-03 | — | N/A | doc grep | `grep -c '^- \[x\] 8\.' docs/PLAN.md` | ✅ docs exist | ⬜ pending |
+| 8-01-01 | 01 | 1 | MANY-01 | T-08-01 | Style factor finite and exactly 1.0 up to 4 cells per line; 1-9 geometry bit-identical | unit (Wave 0 freeze, then tracer) | `cargo test -p collage-core --lib one_to_nine` and `cargo test -p collage-core --lib effective` | ❌ W0 (task creates) | ✅ green |
+| 8-01-02 | 01 | 1 | MANY-01 | T-08-02 | Dense drags use the same spacing as placements, stop at MIN_CELL_SIZE | unit (tdd) | `cargo test -p collage-core --lib -- max_cells_per_line style_scale effective dense` | ❌ (task creates) | ✅ green |
+| 8-02-01 | 02 | 2 | MANY-01, MANY-02 | T-08-03 | Cap 36 enforced in the core (TooManyImages, no templates above) | unit (tracer) | `cargo test -p collage-core --lib many_images` | ❌ (task creates) | ✅ green |
+| 8-02-02 | 02 | 2 | MANY-01 | T-08-04 | Drags on cells below MIN_CELL_SIZE are no-ops, never panic or overlap | unit (tdd) | `cargo test -p collage-core --lib many_images` (at least 7 passed) | ❌ (task creates) | ✅ green |
+| 8-03-01 | 03 | 3 | MANY-02, MANY-03 | T-08-05, T-08-08 | Preview pixels capped at the 9-image budget; log line without paths | unit (tracer) + desktop start | `cargo test -p dimuli-app --lib -- preview_max_edge preview_respects many_images too_many_images`; display-aware start gate: `grep -qx 'exit 124' android/build/smoke/p8-03-desktop-start.txt` and no panic in `p8-03-desktop-stderr.txt` when a `DISPLAY`/`WAYLAND_DISPLAY` is recorded in it (none recorded: reported as not evaluated, not a failure) | ❌ (task creates) | ✅ green |
+| 8-03-02 | 03 | 3 | MANY-03 | — | N/A (view geometry: D-05 handles, D-06 free area, radius, thumbnails) | unit (tdd) | `cargo test -p dimuli-app --lib -- template_previews effective_corner divider_handles_stay free_area` | ❌ (task creates) | ✅ green |
+| 8-03-03 | 03 | 3 | MANY-03 | T-08-06, T-08-07 | No second pick while copying; overlay never sticks after cancel or failure (D-08) | unit (tdd) + Android lint | `cargo test -p dimuli-app --lib state::tests::pick_` | ❌ (task creates) | ✅ green |
+| 8-04-01 | 04 | 4 | MANY-02, MANY-03 | T-08-09, T-08-10 | 12 photos within VmHWM below 1 GiB; picker cancel releases the overlay | emulator (scripted adb) | `grep -q 'picked images: 12, failed copies: 0' android/build/smoke/p8-04-12-logcat.txt` (+ smoke, focus, crash and VmHWM gates in the plan) | ❌ (task creates evidence) | ✅ green |
+| 8-04-02 | 04 | 4 | MANY-03 | T-08-10 | 25 photos within VmHWM below 1 GiB; exactly one pick despite repeated taps | emulator (scripted adb) | `grep -q 'collage ready: 25 images' android/build/smoke/p8-04-25-logcat.txt` (+ focus, screenshot-diff and VmHWM gates in the plan) | ❌ (task creates evidence) | ✅ green |
+| 8-05-01 | 05 | 5 | MANY-01, MANY-02, MANY-03 | T-08-11, T-08-SC | Review findings fixed; no manifest or Android source change | review + full gates | full suite + Android lint; `grep -q 'APK CHECK OK' android/build/smoke/p8-05-check-apk.txt` | ❌ (task creates) | ✅ green |
+| 8-05-02 | 05 | 5 | MANY-01, MANY-02, MANY-03 | T-08-12 | Docs record the limits and behaviour as built | doc greps | `grep -cE '^\| .MAX_IMAGES. \| 36 \|' docs/ARCHITECTURE.md` (+ the other doc gates in the plan) | ✅ docs exist | ✅ green |
+| 8-06-01 | 06 | 6 | MANY-01, MANY-02, MANY-03 | T-08-13 | Only smoke on the owner's phone | desktop start + smoke | display-aware start gate: `grep -qx 'exit 124' android/build/smoke/p8-06-desktop-start.txt` and no panic in `p8-06-desktop-stderr.txt` when a `DISPLAY`/`WAYLAND_DISPLAY` is recorded in it (none recorded: reported as not evaluated, not a failure) | ❌ (task creates evidence) | ✅ green |
+| 8-06-02 | 06 | 6 | MANY-01, MANY-02, MANY-03 | T-08-14 | Owner's photos never touched by automation | manual (owner checkpoint) | — (see Manual-Only Verifications) | n/a | ✅ green |
+| 8-06-03 | 06 | 6 | MANY-01, MANY-02, MANY-03 | — | N/A | doc grep | `grep -c '^- \[x\] 8\.' docs/PLAN.md` | ✅ docs exist | ✅ green |
 
 *Status: ⬜ not run yet · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -62,9 +62,9 @@ created: "2026-11-15"
 
 ## Wave 0 Requirements
 
-- [ ] `crates/collage-core/src/templates.rs` tests: verbatim `legacy_templates_for` copy and `templates_for_one_to_nine_are_unchanged`, green on the unchanged code (08-01 Task 1, subtask A)
-- [ ] `crates/collage-core/src/collage.rs` tests: `one_to_nine_geometry_equals_raw_style` over all 1-9 templates, 4 formats and 4 styles, exact equality, green on the unchanged code (08-01 Task 1, subtask A)
-- [ ] `CLASSIC_MAX_IMAGES` (9) scopes the classic tests that only hold for 1-9 when `MAX_IMAGES` becomes 36 (08-02 Task 1)
+- [x] `crates/collage-core/src/templates.rs` tests: verbatim `legacy_templates_for` copy and `templates_for_one_to_nine_are_unchanged`, green on the unchanged code (08-01 Task 1, subtask A)
+- [x] `crates/collage-core/src/collage.rs` tests: `one_to_nine_geometry_equals_raw_style` over all 1-9 templates, 4 formats and 4 styles, exact equality, green on the unchanged code (08-01 Task 1, subtask A)
+- [x] `CLASSIC_MAX_IMAGES` (9) scopes the classic tests that only hold for 1-9 when `MAX_IMAGES` becomes 36 (08-02 Task 1)
 
 Everything else uses the existing `#[test]` infrastructure, the existing render-test helpers (images of at most 64 px generated in the test) and the proven emulator scripts.
 
@@ -87,7 +87,7 @@ Everything else uses the existing `#[test]` infrastructure, the existing render-
 - [x] Sampling continuity: no 3 consecutive tasks without automated verify
 - [x] Wave 0 covers all MISSING references
 - [x] No watch-mode flags
-- [ ] Feedback latency < 60 s (to be confirmed by the 08-01/08-02 run times)
+- [x] Feedback latency < 60 s (to be confirmed by the 08-01/08-02 run times)
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** owner approved 2026-11-15 (desktop 36 images, emulator 12/25, phone smoke; cap 36 stays)

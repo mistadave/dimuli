@@ -41,9 +41,9 @@ Reine Rust-Logik ohne UI- oder Plattformabhängigkeit. Module:
 | Modul | Inhalt |
 |---|---|
 | `geometry` | `Size`, `Vec2`, `Rect` (Collage-Einheiten, `f32`) |
-| `layout` | `LayoutNode`, `Split`, Zellrechtecke berechnen, Trennlinien finden und ziehen (abstandsbewusst: gleiche `ratio`s ergeben gleich große Felder) |
-| `templates` | Vorlagen je Bildanzahl: ausgewogene Raster (Zeilen/Spalten) plus „großes Bild links/oben“ für 3–5 |
-| `collage` | `Collage` (Gesamtmodell) und alle Bearbeitungsoperationen |
+| `layout` | `LayoutNode`, `Split`, Zellrechtecke berechnen, Trennlinien finden und ziehen (abstandsbewusst: gleiche `ratio`s ergeben gleich große Felder); `max_cells_per_line` (Felder in der vollsten Zeile/Spalte) |
+| `templates` | Vorlagen je Bildanzahl: für 1–9 unverändert (ausgewogene Raster plus „großes Bild links/oben“ für 3–5), ab 10 Bildern nur gleichmäßige Raster aus den zwei ausgewogensten Zeilenzahlen, höchstens 6 Vorlagen |
+| `collage` | `Collage` (Gesamtmodell) und alle Bearbeitungsoperationen; `effective_style` (Stil für Geometrie, Vorschau und Export) |
 | `crop` | Zuschnitt: aus Bildgröße, Zellgröße und `CellTransform` das sichtbare Quellrechteck |
 | `decode` | `decode_unoriented(path)` (Dekodieren mit Limits `DECODE_MAX_*`, liefert Bild + EXIF-Orientierung) und `decode_image(path)` (zusätzlich orientiert); geteilt von Export und App-Vorschau |
 | `render` | Export: `compose` (Bilder einzeln über `decode_unoriented` dekodieren, den `placements()`-Crop in gespeicherte Pixel zurückrechnen, ohne Kopie als View direkt auf Zellgröße verkleinern und erst die kleine Zelle orientieren – Spitzenspeicher ≈ dekodiertes Bild + Zelle; 16-Bit/Float/Graustufen+Alpha brauchen zusätzlich eine 8-Bit-RGBA-Kopie des sichtbaren Ausschnitts; Quellen mit Alpha werden premultipliziert skaliert, damit keine Farbsäume entstehen; Eckenradius per antialiasierter Abdeckungsmaske, Kantenrundung der Pixelrechtecke ohne Lücken) und `render` (JPEG-Kodierung); `ExportOptions { long_edge, jpeg_quality }` wird geklemmt (`1..=MAX_EXPORT_LONG_EDGE` = 8192, Qualität 1–100); Hintergrund mit Alpha wird über Weiß gemischt |
@@ -93,6 +93,7 @@ impl Collage {
     pub fn swap(&mut self, a: CellId, b: CellId) -> Result<(), CoreError>;
     pub fn set_aspect(&mut self, aspect: AspectRatio);
     pub fn set_style(&mut self, style: Style);       // klemmt auf gültige Werte
+    pub fn effective_style(&self) -> Style;          // Stil für Geometrie, Vorschau und Export; style() bleibt der gespeicherte Wert
     pub fn cell_at(&self, point: Vec2) -> Option<CellId>; // Hit-Test für Tauschen
 }
 
@@ -106,8 +107,8 @@ pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -
 |---|---|
 | `lib.rs` | `run(platform)`: UI erstellen, Controller verdrahten |
 | `main.rs` | Desktop-Einstieg: `run(DesktopPlatform)`; wählt standardmäßig winit mit Software-Renderer (WSLg-OpenGL-Problem), `SLINT_BACKEND` überschreibt das |
-| `state.rs` | `AppState { screen, collage, images, busy: Option<Busy>, message, templates, canvas_area, canvas, confirm_back, gesture, share_supported }` samt allen Zustandsübergängen (Gesten-Zustandsmaschine `Gesture`, Laden, Export, Zurück, Stil); Meldungen haben eine Art (Fehler/Hinweis/Erfolg) und eine Sequenznummer; `canvas` wird aus `canvas_area` und dem Collage-Format berechnet; reines Rust, ohne Fenster testbar |
-| `images.rs` | Laden im Hintergrund-Thread (Dekodieren über `collage_core::decode_unoriented`, danach Vorschau ≤ `PREVIEW_MAX_EDGE` verkleinern und orientieren, mit nur einer Kopie des Pixelpuffers; Fehler sind `CoreError`); `ImageStore`: `ImageId → { path, preview: slint::Image, preview_size }`, `sources(&Collage)` liefert die `ImageSource`s für den Export |
+| `state.rs` | `AppState { screen, collage, images, busy: Option<Busy> (Laden, Export, `Picking`: Bildauswahl offen bzw. Kotlin kopiert noch), message, templates, canvas_area, canvas, confirm_back, gesture, share_supported }` samt allen Zustandsübergängen (Gesten-Zustandsmaschine `Gesture`, Laden, Export, Zurück, Stil); Meldungen haben eine Art (Fehler/Hinweis/Erfolg) und eine Sequenznummer; `canvas` wird aus `canvas_area` und dem Collage-Format berechnet; reines Rust, ohne Fenster testbar |
+| `images.rs` | Laden im Hintergrund-Thread (Dekodieren über `collage_core::decode_unoriented`, danach Vorschau ≤ `preview_max_edge(n)` verkleinern und orientieren, mit nur einer Kopie des Pixelpuffers; Fehler sind `CoreError`); `ImageStore`: `ImageId → { path, preview: slint::Image, preview_size }`, `sources(&Collage)` liefert die `ImageSource`s für den Export |
 | `controller.rs` | Dünn: verbindet UI-Callbacks und `PlatformEvent`s mit `AppState`-Übergängen und stößt danach `refresh` an; `post()` bringt Aktionen aus anderen Threads in den UI-Thread (Controller per `thread_local` auffindbar); `update_gesture` aktualisiert bei Gesten nur die betroffenen Zeilen; ein `Timer` blendet Erfolgsmeldungen aus |
 | `view.rs` | Reine Umrechnung Collage-Einheiten ↔ Pixel (1.0 = Canvas-Breite in px), `source-clip-*`, Trennlinien-Touchflächen (≥ 48 px), Wheel-Zoom; `fit_canvas` (größte Canvas mit Collage-Format in der verfügbaren Fläche, ungültige Werte ergeben 0); Gesten-Schnellpfad (bei geänderter Meldung oder anderem Bildschirm voller Refresh); `Models::snapshot/apply` schreibt `CellView`/`DividerView`/`TemplateView` in die Slint-Models (nur geänderte Zeilen) |
 | `texts.rs` | Vom Rust-Code erzeugte deutsche Meldungen (Texte der `.slint`-Dateien: `ui/texts.slint`) |
@@ -143,13 +144,13 @@ Safe-Area-Insets (Systemleisten, Display-Ausschnitt) liefert Slint selbst als `W
 damit ein (Desktop: 0), die Plattform meldet keine Insets.
 
 Desktop (`DesktopPlatform`): `pick_images` liefert die beim Start übergebenen Pfade (`cargo run -p dimuli-app -- a.jpg b.jpg`,
-alle Pfade; der Controller kürzt auf `MAX_IMAGES` und zeigt den Hinweis; ohne Argumente `PickFailed`). `max` ist nur ein Hinweis.
+alle Pfade; der Controller kürzt auf `MAX_IMAGES` (36) und zeigt den Hinweis; ohne Argumente `PickFailed`). `max` ist nur ein Hinweis.
 `close_app` beendet auf dem Desktop die Slint-Event-Loop. `save_to_gallery` schreibt `dimuli-<Unix-Sekunden>.jpg` ins Arbeitsverzeichnis
 (nie überschreibend: bei Kollision `-1`, `-2`, …; der volle Pfad wird geloggt). `share_supported` ist `false`: „Teilen“ meldet
 sofort „nicht verfügbar“, ohne vorher zu rendern. `restored_after_close` ist immer `false`.
 
 Android (`AndroidPlatform`): `pick_images` öffnet den System-Photo-Picker (`ACTION_PICK_IMAGES`, höchstens `max` Bilder);
-Kotlin kopiert die Auswahl nach `cacheDir/picked/img-<n>` (wird beim nächsten Auswählen bzw. Start gelöscht).
+Kotlin kopiert die Auswahl nach `cacheDir/picked/img-<n>` (wird beim nächsten Auswählen bzw. Start gelöscht; bis zu 36 Kopien, gemessen ca. 48 MiB bei 25 Fotos mit 12 MP).
 JPEG und PNG werden unverändert kopiert; alles andere (HEIC/HEIF, WebP, AVIF, wo das Gerät es kann) wandelt Kotlin dabei mit
 `ImageDecoder` um: sRGB, aufrecht ausgerichtet, ohne EXIF, als JPEG (Qualität 95) bzw. PNG bei Transparenz. Bilder über 64 MP
 oder mit einer Kante über 16 384 px werden beim Kopieren verkleinert (reicht der Speicher nicht, bis zu drei weitere Versuche mit
@@ -179,6 +180,8 @@ Mausrad → `zoom` unter dem Zeiger, Pinch (`ScaleRotateGestureHandler`) → `zo
 Trennlinien haben keine eigene `TouchArea`: Jede hat genau einen Griff mit quadratischer Zielfläche (Kantenlänge `Theme.touch-target`, 48 px,
 zentriert auf dem Gap). Bei `press` prüft Rust zuerst die Griffe (bei Überlappung gewinnt der nächste Mittelpunkt) und startet
 `Gesture::DraggingDivider`, sonst läuft die Zell-Logik. Die Griffe in `.slint` sind reine Darstellung.
+Bei vielen Bildern überlappen die Griffe; in 16:9 können einzelne Felder ganz unter Griffen liegen (bei 25 Bildern etwa drei,
+bewusst hingenommen, D-07): dort funktionieren Pinch-Zoom und das Ablegen beim Tauschen, aber nicht Verschieben oder das Starten eines Tauschs.
 
 ### Bildschirme
 
@@ -188,12 +191,13 @@ zentriert auf dem Gap). Bei `press` prüft Rust zuerst die Griffe (bei Überlapp
 
 Export ist kein eigener Bildschirm, sondern ein Ladezustand (`busy`) über dem Editor.
 Zurück im Editor → Start (mit Rückfrage, da die Collage verloren geht).
-Zurück auf dem Startbildschirm (auch während des Ladens) ist nicht behandelt (`BackOutcome::NotHandled`);
+Zurück auf dem Startbildschirm (auch während die Bildauswahl offen ist oder Bilder geladen werden) ist nicht behandelt (`BackOutcome::NotHandled`);
 der Controller ruft dann `platform.close_app()` auf.
 
 ## Abläufe
 
-**Bilder wählen:** Start → `platform.pick_images(MAX_IMAGES)` → `ImagesPicked { paths, failed }` → Hintergrund-Thread liest
+**Bilder wählen:** Start → `AppState::begin_picking` zeigt sofort den Ladezustand (eine zweite Auswahl ist gesperrt; Abbrechen
+oder ein Fehler beenden ihn, D-08) → `platform.pick_images(MAX_IMAGES)` → `ImagesPicked { paths, failed }` → Hintergrund-Thread liest
 Bildgröße + erzeugt Vorschaubild → Controller erstellt `Collage` mit erster passender Vorlage → Editor.
 
 **Bearbeiten (synchron, UI-Thread):** Geste in Slint → Callback → `collage.drag_divider/pan/zoom/swap` →
@@ -208,15 +212,16 @@ bei Erfolg `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shar
 
 | Konstante | Wert | Grund |
 |---|---|---|
-| `MAX_IMAGES` | 9 | Vorlagen gibt es für 1–9; mehr Bilder per Raster-Generator folgen in Meilenstein 8 |
-| `PREVIEW_MAX_EDGE` | 2048 px | Speicher in der UI begrenzen |
+| `MAX_IMAGES` | 36 | 6x6-Raster; darüber verdecken die 48-px-Griffe der Trennlinien auf dem Handy zu viel der Felder für Verschieben und Tauschen (D-06); der Photo Picker wird mit 36 geöffnet, der Desktop kürzt längere Argumentlisten mit Hinweis |
+| `PREVIEW_MAX_EDGE` | 2048 px | Speicher in der UI begrenzen; bis 9 Bilder 2048 px, darüber `preview_max_edge(n)` = abgerundet 2048 · √(9/n) (36 Bilder: 1024 px), damit der Vorschauspeicher auf dem Stand von 9 Bildern bleibt |
+| `FULL_STYLE_CELLS_PER_LINE` | 4 | Bis 4 Felder pro Zeile/Spalte gilt der Stil unverändert (1–9 Bilder pixelgleich); ab 5 wirken Abstand, Rand und Eckenradius mit dem Faktor 4/n (`Collage::effective_style`, Vorschau und Export gleich, D-01/D-02) |
 | `EXPORT_LONG_EDGE` | 3000 px | Gute Qualität bei vertretbarer Dateigröße |
 | `DECODE_MAX_PIXELS` | 64 MP | Schutz vor manipulierten/riesigen Bildern; 64 MP RGBA sind 256 MB, der Export braucht nur 3000 px, Android verkleinert größere Bilder schon beim Kopieren |
 | `DECODE_MAX_EDGE` | 16 384 px | Längste erlaubte Kante |
 | `DECODE_MAX_ALLOC` | 256 MiB | Obergrenze für den Dekodier-Puffer; begrenzt auch 16-Bit-Quellen |
 | `MESSAGE_HIDE_AFTER` | 3 s | Erfolgsmeldungen verschwinden von selbst; Fehler und Hinweise bleiben |
-| `MIN_CELL_SIZE` | 0.05 | Feld wird beim Ziehen nicht schmaler als 5 % der Collage-Breite |
-| `MAX_SPACING` / `MAX_PADDING` / `MAX_CORNER_RADIUS` | 0.05 / 0.1 / 0.1 | Grenzen für den Stil, damit auch 9 Felder sichtbar bleiben |
+| `MIN_CELL_SIZE` | 0.05 | Feld wird beim Ziehen nicht schmaler als 5 % der Collage-Breite; in 16:9 mit vielen Bildern und maximalem Stil können Felder schon darunter starten, ihre Trennlinien bleiben dann stehen |
+| `MAX_SPACING` / `MAX_PADDING` / `MAX_CORNER_RADIUS` | 0.05 / 0.1 / 0.1 | Grenzen des gespeicherten Stils (Schieberegler); wirksam wird der Stil über `effective_style` |
 | `MAX_ZOOM` | 5.0 | Sinnvolle Obergrenze für Pinch-Zoom |
 | Export-Format | JPEG, Qualität 90 | Galerie- und Teilen-kompatibel |
 
@@ -224,6 +229,6 @@ bei Erfolg `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shar
 
 ## Bewusst nicht in v1
 
-Persistenz/Projekte speichern, Undo/Redo, Text/Sticker, Filter, freie Anordnung, mehr als 9 Bilder (Meilenstein 8),
+Persistenz/Projekte speichern, Undo/Redo, Text/Sticker, Filter, freie Anordnung,
 Übersetzungen (nur vorbereitet). Die Architektur verbaut nichts davon: Undo z. B. wäre ein Stapel von
 `Collage`-Klonen im Controller.

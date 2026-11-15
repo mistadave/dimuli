@@ -204,8 +204,12 @@ impl Controller {
     }
 
     fn pick_images(&self) {
-        self.update(|s| s.dismiss_message());
-        self.platform.pick_images(MAX_IMAGES);
+        // The borrow ends with this statement; the platform call below runs without it.
+        let started = self.state.borrow_mut().begin_picking();
+        self.refresh();
+        if started {
+            self.platform.pick_images(MAX_IMAGES);
+        }
     }
 
     /// Reacts to something the platform reported.
@@ -214,7 +218,7 @@ impl Controller {
             PlatformEvent::ImagesPicked { paths, failed } => self.start_loading(paths, failed),
             PlatformEvent::PickFailed(message) => {
                 log::error!("picking images failed: {message}");
-                self.update(|s| s.show_error(message));
+                self.update(|s| s.pick_failed(message));
             }
             PlatformEvent::Saved(result) => self.update(|s| s.save_finished(result)),
             PlatformEvent::Shared(result) => self.update(|s| s.share_finished(result)),
@@ -231,7 +235,9 @@ impl Controller {
     /// Decodes the picked images in the background, then builds the collage.
     fn start_loading(&self, mut paths: Vec<PathBuf>, failed: usize) {
         if paths.is_empty() {
-            return; // cancelled by the user
+            // Cancelled by the user: release the waiting overlay.
+            self.update(AppState::pick_cancelled);
+            return;
         }
         let truncated = paths.len() > MAX_IMAGES;
         paths.truncate(MAX_IMAGES);

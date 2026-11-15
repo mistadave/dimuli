@@ -17,6 +17,24 @@ use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 /// Longest edge of a preview in pixels; limits memory used by the UI.
 pub(crate) const PREVIEW_MAX_EDGE: u32 = 2048;
 
+/// Image count up to which previews keep the full [`PREVIEW_MAX_EDGE`].
+const FULL_PREVIEW_IMAGES: usize = 9;
+
+/// Longest preview edge for a collage of `count` images.
+///
+/// Up to [`FULL_PREVIEW_IMAGES`] the full edge is used. Above, the edge shrinks with `sqrt(9 / count)`, so the
+/// total preview pixels stay at the 9-image level (9 x 2048 squared). A cell's on-screen size shrinks about as
+/// fast, so zoom headroom is unchanged.
+pub(crate) fn preview_max_edge(count: usize) -> u32 {
+    if count <= FULL_PREVIEW_IMAGES {
+        return PREVIEW_MAX_EDGE;
+    }
+    let ratio = FULL_PREVIEW_IMAGES as f64 / count as f64;
+    let edge = (f64::from(PREVIEW_MAX_EDGE) * ratio.sqrt()).floor();
+    // `edge` is finite and in 0..=2048, so the cast cannot truncate.
+    (edge as u32).max(1)
+}
+
 /// A decoded image, ready to be handed to the UI thread.
 #[derive(Debug)]
 pub(crate) struct LoadedImage {
@@ -25,7 +43,7 @@ pub(crate) struct LoadedImage {
     pub(crate) width: u32,
     /// Original height in pixels after applying the EXIF orientation.
     pub(crate) height: u32,
-    /// Oriented preview, at most [`PREVIEW_MAX_EDGE`] on its longest edge.
+    /// Oriented preview, at most the `max_edge` given to [`load_image`] on its longest edge.
     pub(crate) preview: SharedPixelBuffer<Rgba8Pixel>,
 }
 
@@ -40,13 +58,13 @@ fn swaps_axes(orientation: Orientation) -> bool {
     )
 }
 
-/// Decodes `path` (with the core's limits) and creates the oriented preview.
-pub(crate) fn load_image(path: &Path) -> Result<LoadedImage, CoreError> {
+/// Decodes `path` (with the core's limits) and creates the oriented preview of at most `max_edge` pixels.
+pub(crate) fn load_image(path: &Path, max_edge: u32) -> Result<LoadedImage, CoreError> {
     let (decoded, orientation) = decode_unoriented(path)?;
     let (width, height) = (decoded.width(), decoded.height());
 
     // Orient the small preview instead of the full image to save time and memory.
-    let mut preview = downscale(decoded, PREVIEW_MAX_EDGE);
+    let mut preview = downscale(decoded, max_edge);
     preview.apply_orientation(orientation);
     let buffer = preview_buffer(&preview)?;
     let (width, height) = if swaps_axes(orientation) {
@@ -120,7 +138,9 @@ pub(crate) fn load_in_background<F>(paths: Vec<PathBuf>, done: F) -> io::Result<
 where
     F: FnOnce(Vec<Result<LoadedImage, CoreError>>) + Send + 'static,
 {
-    load_in_background_with(paths, load_image, done)
+    // The count is an upper bound if some copies failed, which only makes previews slightly smaller.
+    let max_edge = preview_max_edge(paths.len());
+    load_in_background_with(paths, move |path| load_image(path, max_edge), done)
 }
 
 /// Like [`load_in_background`] with an injectable `loader`. A panic inside `loader` is caught per image,
@@ -257,10 +277,39 @@ mod tests {
         let dir = temp_dir("png");
         let path = dir.join("a.png");
         gradient(40, 20).save(&path).unwrap();
-        let loaded = load_image(&path).unwrap();
+        let loaded = load_image(&path, PREVIEW_MAX_EDGE).unwrap();
         assert_eq!((loaded.width, loaded.height), (40, 20));
         assert_eq!((loaded.preview.width(), loaded.preview.height()), (40, 20));
         assert_eq!(loaded.path, path);
+    }
+
+    #[test]
+    fn preview_max_edge_keeps_total_preview_pixels_at_the_nine_image_level() {
+        for count in 1..=9 {
+            assert_eq!(preview_max_edge(count), 2048);
+        }
+        for (count, edge) in [(10, 1942), (12, 1773), (16, 1536), (25, 1228), (36, 1024)] {
+            assert_eq!(preview_max_edge(count), edge, "count {count}");
+        }
+        let budget = 9u64 * 2048 * 2048;
+        let mut previous = u32::MAX;
+        for count in 10..=collage_core::MAX_IMAGES {
+            let edge = preview_max_edge(count);
+            assert!(edge >= 1);
+            assert!(count as u64 * u64::from(edge) * u64::from(edge) <= budget);
+            assert!(edge <= previous);
+            previous = edge;
+        }
+    }
+
+    #[test]
+    fn preview_respects_the_given_max_edge() {
+        let dir = temp_dir("max-edge");
+        let path = dir.join("a.png");
+        gradient(64, 48).save(&path).unwrap();
+        let loaded = load_image(&path, 32).unwrap();
+        assert_eq!((loaded.preview.width(), loaded.preview.height()), (32, 24));
+        assert_eq!((loaded.width, loaded.height), (64, 48));
     }
 
     #[test]
@@ -268,7 +317,7 @@ mod tests {
         let dir = temp_dir("colours");
         let path = dir.join("c.png");
         gradient(40, 20).save(&path).unwrap();
-        let loaded = load_image(&path).unwrap();
+        let loaded = load_image(&path, PREVIEW_MAX_EDGE).unwrap();
         // Pixel (5, 3) of the gradient is (5, 3, 7); buffers are row-major.
         let pixel = loaded.preview.as_slice().get(3 * 40 + 5).unwrap();
         assert_eq!((pixel.r, pixel.g, pixel.b, pixel.a), (5, 3, 7, 255));
@@ -323,7 +372,7 @@ mod tests {
         let dir = temp_dir("jpeg");
         let path = dir.join("a.jpg");
         gradient(33, 17).save(&path).unwrap();
-        let loaded = load_image(&path).unwrap();
+        let loaded = load_image(&path, PREVIEW_MAX_EDGE).unwrap();
         assert_eq!((loaded.width, loaded.height), (33, 17));
     }
 
@@ -334,7 +383,7 @@ mod tests {
         gradient(8, 8)
             .save_with_format(&path, image::ImageFormat::Png)
             .unwrap();
-        assert!(load_image(&path).is_ok());
+        assert!(load_image(&path, PREVIEW_MAX_EDGE).is_ok());
     }
 
     #[test]
@@ -364,7 +413,7 @@ mod tests {
         let path = dir.join("broken.png");
         std::fs::write(&path, b"\x89PNG\r\n\x1a\nthis is not a png").unwrap();
         assert!(matches!(
-            load_image(&path),
+            load_image(&path, PREVIEW_MAX_EDGE),
             Err(CoreError::ImageDecode { .. })
         ));
     }
@@ -376,14 +425,14 @@ mod tests {
         gradient(64, 64).save(&path).unwrap();
         let bytes = std::fs::read(&path).unwrap();
         std::fs::write(&path, &bytes[..bytes.len() / 2]).unwrap();
-        assert!(load_image(&path).is_err());
+        assert!(load_image(&path, PREVIEW_MAX_EDGE).is_err());
     }
 
     #[test]
     fn missing_file_is_an_io_error() {
         let path = std::env::temp_dir().join("dimuli-test-does-not-exist.png");
         assert!(matches!(
-            load_image(&path),
+            load_image(&path, PREVIEW_MAX_EDGE),
             Err(CoreError::ImageDecode { .. })
         ));
     }
@@ -393,7 +442,7 @@ mod tests {
         let dir = temp_dir("text");
         let path = dir.join("a.png");
         std::fs::write(&path, b"hello").unwrap();
-        assert!(load_image(&path).is_err());
+        assert!(load_image(&path, PREVIEW_MAX_EDGE).is_err());
     }
 
     /// Inserts an EXIF block with the given orientation right after the JPEG start marker.
@@ -421,7 +470,7 @@ mod tests {
         let dir = temp_dir("exif");
         let path = dir.join("rotated.jpg");
         std::fs::write(&path, jpeg_with_orientation(&gradient(40, 20), 6)).unwrap();
-        let loaded = load_image(&path).unwrap();
+        let loaded = load_image(&path, PREVIEW_MAX_EDGE).unwrap();
         assert_eq!((loaded.width, loaded.height), (20, 40));
         assert_eq!((loaded.preview.width(), loaded.preview.height()), (20, 40));
     }
@@ -431,7 +480,7 @@ mod tests {
         let dir = temp_dir("exif1");
         let path = dir.join("upright.jpg");
         std::fs::write(&path, jpeg_with_orientation(&gradient(40, 20), 1)).unwrap();
-        let loaded = load_image(&path).unwrap();
+        let loaded = load_image(&path, PREVIEW_MAX_EDGE).unwrap();
         assert_eq!((loaded.width, loaded.height), (40, 20));
     }
 
@@ -477,11 +526,11 @@ mod tests {
         let dir = temp_dir("huge");
         let path = dir.join("huge.png");
         std::fs::write(&path, png_header_only(20_000, 20_000)).unwrap();
-        let r = load_image(&path);
+        let r = load_image(&path, PREVIEW_MAX_EDGE);
         assert!(matches!(r, Err(CoreError::ImageTooLarge { .. })), "{r:?}");
         // Within the edge limit but above the pixel budget.
         std::fs::write(&path, png_header_only(10_100, 10_000)).unwrap();
-        let r = load_image(&path);
+        let r = load_image(&path, PREVIEW_MAX_EDGE);
         assert!(matches!(r, Err(CoreError::ImageTooLarge { .. })), "{r:?}");
     }
 
@@ -561,7 +610,9 @@ mod tests {
         let path = dir.join("a.png");
         gradient(12, 6).save(&path).unwrap();
         let mut store = ImageStore::default();
-        let meta = store.insert(load_image(&path).unwrap()).unwrap();
+        let meta = store
+            .insert(load_image(&path, PREVIEW_MAX_EDGE).unwrap())
+            .unwrap();
         let template = collage_core::templates_for(1).remove(0);
         let collage = Collage::new(&[meta], &template).unwrap();
         let sources = store.sources(&collage);
@@ -583,8 +634,12 @@ mod tests {
         let path = dir.join("a.png");
         gradient(12, 6).save(&path).unwrap();
         let mut store = ImageStore::default();
-        let a = store.insert(load_image(&path).unwrap()).unwrap();
-        let b = store.insert(load_image(&path).unwrap()).unwrap();
+        let a = store
+            .insert(load_image(&path, PREVIEW_MAX_EDGE).unwrap())
+            .unwrap();
+        let b = store
+            .insert(load_image(&path, PREVIEW_MAX_EDGE).unwrap())
+            .unwrap();
         assert_ne!(a.id(), b.id());
         assert_eq!(store.len(), 2);
         assert_eq!(store.get(a.id()).unwrap().preview_size, (12, 6));

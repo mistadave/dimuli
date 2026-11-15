@@ -14,6 +14,20 @@ pub const MAX_PADDING: f32 = 0.1;
 /// Maximum corner radius of a cell.
 pub const MAX_CORNER_RADIUS: f32 = 0.1;
 
+/// Up to this many cells per line the style applies exactly as set.
+pub const FULL_STYLE_CELLS_PER_LINE: usize = 4;
+
+/// Factor (in `0.0..=1.0`) applied to spacing, padding and corner radius for a layout with `cells_per_line`
+/// cells on its fullest line. With it the gap-to-cell ratio stays about the same at every image count, and it
+/// is continuous between 4 and 5 cells.
+pub fn style_scale(cells_per_line: usize) -> f32 {
+    if cells_per_line <= FULL_STYLE_CELLS_PER_LINE {
+        1.0
+    } else {
+        FULL_STYLE_CELLS_PER_LINE as f32 / cells_per_line as f32
+    }
+}
+
 /// Identifies an image managed by the app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ImageId(pub u32);
@@ -243,15 +257,34 @@ impl Collage {
         Ok(())
     }
 
-    /// Area inside the padding.
-    fn content_bounds(&self) -> Rect {
-        Rect::from_size(self.size()).inset(self.style.padding)
+    /// The style used for geometry, preview and export, in collage units: the stored style, with spacing,
+    /// padding and corner radius scaled down by [`style_scale`] when the layout has more than
+    /// [`FULL_STYLE_CELLS_PER_LINE`] cells on a line. Derived on every call (a template change changes it);
+    /// [`Collage::style`] stays the stored slider values.
+    pub fn effective_style(&self) -> Style {
+        let cells_per_line = self.layout.max_cells_per_line();
+        if cells_per_line <= FULL_STYLE_CELLS_PER_LINE {
+            return self.style;
+        }
+        let scale = style_scale(cells_per_line);
+        Style {
+            spacing: self.style.spacing * scale,
+            padding: self.style.padding * scale,
+            corner_radius: self.style.corner_radius * scale,
+            background: self.style.background,
+        }
+    }
+
+    /// Area inside the (effective) padding.
+    fn content_bounds(&self, style: &Style) -> Rect {
+        Rect::from_size(self.size()).inset(style.padding)
     }
 
     /// Placement of every cell in pre-order.
     pub fn placements(&self) -> Vec<CellPlacement> {
+        let style = self.effective_style();
         self.layout
-            .cell_rects(self.content_bounds(), self.style.spacing)
+            .cell_rects(self.content_bounds(&style), style.spacing)
             .into_iter()
             .filter_map(|(id, rect)| {
                 let cell = self.cells.get(id.0 as usize)?;
@@ -267,15 +300,17 @@ impl Collage {
 
     /// All draggable dividers.
     pub fn dividers(&self) -> Vec<Divider> {
+        let style = self.effective_style();
         self.layout
-            .dividers(self.content_bounds(), self.style.spacing)
+            .dividers(self.content_bounds(&style), style.spacing)
     }
 
     /// Moves a divider by `delta` collage units (see [`LayoutNode::drag_divider`]).
     pub fn drag_divider(&mut self, id: DividerId, delta: Vec2) -> Result<(), CoreError> {
-        let bounds = self.content_bounds();
-        self.layout
-            .drag_divider(bounds, self.style.spacing, id, delta)
+        // One style value for bounds and spacing, so the drag clamp agrees with `placements`.
+        let style = self.effective_style();
+        let bounds = self.content_bounds(&style);
+        self.layout.drag_divider(bounds, style.spacing, id, delta)
     }
 
     /// The cell at `point` (collage units), if any. Points in gaps or padding hit no cell.
@@ -398,8 +433,8 @@ fn check_template(template: &Template, images: usize) -> Result<(), CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::MIN_CELL_SIZE;
-    use crate::templates::templates_for;
+    use crate::layout::{MIN_CELL_SIZE, SplitDir};
+    use crate::templates::{CLASSIC_MAX_IMAGES, templates_for};
 
     const EPS: f32 = 1e-4;
 
@@ -418,6 +453,195 @@ mod tests {
     fn collage(sizes: &[(u32, u32)]) -> Collage {
         let imgs = images(sizes);
         Collage::new(&imgs, &templates_for(imgs.len())[0]).unwrap()
+    }
+
+    #[test]
+    fn one_to_nine_geometry_equals_raw_style() {
+        let styles = [
+            Style::default(),
+            Style {
+                spacing: MAX_SPACING,
+                padding: MAX_PADDING,
+                corner_radius: MAX_CORNER_RADIUS,
+                ..Style::default()
+            },
+            Style {
+                spacing: 0.0,
+                padding: 0.0,
+                corner_radius: 0.0,
+                ..Style::default()
+            },
+            Style {
+                spacing: 0.037,
+                padding: 0.071,
+                corner_radius: 0.063,
+                ..Style::default()
+            },
+        ];
+        for count in 1..=9usize {
+            let imgs = images(&vec![(30, 20); count]);
+            for template in templates_for(count) {
+                for aspect in AspectRatio::ALL {
+                    for style in styles {
+                        let mut c = Collage::new(&imgs, &template).unwrap();
+                        c.set_aspect(aspect);
+                        c.set_style(style);
+                        let bounds = Rect::from_size(c.size()).inset(c.style().padding);
+                        let spacing = c.style().spacing;
+                        let expected = c.layout().cell_rects(bounds, spacing);
+                        let actual: Vec<_> =
+                            c.placements().iter().map(|p| (p.cell, p.rect)).collect();
+                        // Exact comparison on purpose: bit identity is the claim (CODING_GUIDELINES section 3).
+                        assert_eq!(actual, expected, "{} {aspect:?}", template.name());
+                        assert_eq!(c.effective_style(), c.style());
+                        assert_eq!(
+                            c.dividers(),
+                            c.layout().dividers(bounds, spacing),
+                            "{} {aspect:?}",
+                            template.name()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn effective_style_scales_from_five_cells_per_line() {
+        let imgs = images(&[(30, 20); 10]);
+        let template = crate::templates::test_grid(SplitDir::TopBottom, &[5, 5]);
+        let mut c = Collage::new(&imgs, &template).unwrap();
+        c.set_aspect(AspectRatio::Square);
+        let eff = c.effective_style();
+        assert!(close(eff.spacing, 0.008));
+        assert!(close(eff.padding, 0.008));
+        assert!(close(c.style().spacing, 0.01));
+        let p = c.placements();
+        assert!(close(p[0].rect.x, 0.008));
+        assert!(close(p[0].rect.y, 0.008));
+        assert!(close(p[1].rect.x - p[0].rect.right(), 0.008));
+        let d = c.dividers();
+        // The divider between cell 0 and cell 1 is the first vertical one.
+        let vertical = d.iter().find(|d| d.dir == SplitDir::LeftRight).unwrap();
+        assert!(close(vertical.rect.width, 0.008));
+    }
+
+    #[test]
+    fn style_scale_is_one_up_to_four_then_four_over_n() {
+        for n in 0..=4 {
+            assert_eq!(style_scale(n), 1.0, "n={n}");
+        }
+        assert!((style_scale(5) - 0.8).abs() < 1e-6);
+        assert!((style_scale(8) - 0.5).abs() < 1e-6);
+        assert!((style_scale(10) - 0.4).abs() < 1e-6);
+        let mut previous = 1.0;
+        for n in 1..=100 {
+            let scale = style_scale(n);
+            assert!(scale > 0.0 && scale <= 1.0, "n={n}");
+            assert!(scale <= previous, "n={n}");
+            previous = scale;
+        }
+    }
+
+    #[test]
+    fn effective_style_keeps_stored_style_and_background() {
+        let imgs = images(&[(30, 20); 10]);
+        let dense = crate::templates::test_grid(SplitDir::TopBottom, &[5, 5]);
+        let mut c = Collage::new(&imgs, &dense).unwrap();
+        let background = Rgba::new(10, 20, 30, 255);
+        c.set_style(Style {
+            spacing: 0.03,
+            padding: 0.05,
+            corner_radius: 0.07,
+            background,
+        });
+        let stored = c.style();
+        assert!(close(stored.spacing, 0.03));
+        assert!(close(stored.padding, 0.05));
+        assert!(close(stored.corner_radius, 0.07));
+        let eff = c.effective_style();
+        assert_eq!(eff.background, background);
+        assert!(close(eff.spacing, 0.03 * 0.8));
+        assert_eq!(c.style(), stored);
+
+        let sparse = crate::templates::test_grid(SplitDir::TopBottom, &[3, 3, 4]);
+        c.apply_template(&sparse).unwrap();
+        assert_eq!(c.effective_style(), c.style());
+    }
+
+    #[test]
+    fn effective_style_gap_ratio_is_continuous_at_five_cells() {
+        let ratio = |cells: usize| {
+            let imgs = images(&vec![(30, 20); cells]);
+            let template = crate::templates::test_grid(SplitDir::TopBottom, &[cells]);
+            let mut c = Collage::new(&imgs, &template).unwrap();
+            c.set_aspect(AspectRatio::Square);
+            let p = c.placements();
+            let gap = p[1].rect.x - p[0].rect.right();
+            gap / p[0].rect.width
+        };
+        let (four, five) = (ratio(4), ratio(5));
+        assert!((four - five).abs() / four < 0.05, "{four} vs {five}");
+    }
+
+    #[test]
+    fn effective_corner_radius_scales_with_spacing() {
+        let max = Style {
+            corner_radius: MAX_CORNER_RADIUS,
+            ..Style::default()
+        };
+        let radius = |shape: &[usize]| {
+            let imgs = images(&vec![(30, 20); shape.iter().sum()]);
+            let template = crate::templates::test_grid(SplitDir::TopBottom, shape);
+            let mut c = Collage::new(&imgs, &template).unwrap();
+            c.set_style(max);
+            c.effective_style().corner_radius
+        };
+        assert!(close(radius(&[5, 5]), 0.08));
+        assert!(close(radius(&[9]), MAX_CORNER_RADIUS * 4.0 / 9.0));
+        assert!(close(radius(&[10]), MAX_CORNER_RADIUS * style_scale(10)));
+        assert!(close(radius(&[10]), 0.04));
+    }
+
+    /// 10 cells, two rows of 5; dividers in pre-order: 0 the row split, 1..=4 the chain of row 0, so
+    /// `DividerId(4)` sits between cells 3 and 4.
+    fn dense_collage() -> Collage {
+        let imgs = images(&[(30, 20); 10]);
+        let template = crate::templates::test_grid(SplitDir::TopBottom, &[5, 5]);
+        let mut c = Collage::new(&imgs, &template).unwrap();
+        c.set_aspect(AspectRatio::Square);
+        c
+    }
+
+    #[test]
+    fn dragging_in_a_dense_layout_moves_cells_by_the_delta() {
+        let mut c = dense_collage();
+        let before = c.placements();
+        c.drag_divider(DividerId(4), Vec2::new(0.02, 0.0)).unwrap();
+        let after = c.placements();
+        assert_eq!(before.len(), after.len());
+        for (i, (b, a)) in before.iter().zip(&after).enumerate() {
+            match i {
+                3 => {
+                    assert!(close(a.rect.width, b.rect.width + 0.02));
+                    assert!(close(a.rect.x, b.rect.x));
+                }
+                4 => {
+                    assert!(close(a.rect.width, b.rect.width - 0.02));
+                    assert!(close(a.rect.right(), b.rect.right()));
+                }
+                _ => assert_eq!(a.rect, b.rect, "cell {i}"),
+            }
+        }
+    }
+
+    #[test]
+    fn dragging_in_a_dense_layout_respects_min_cell_size() {
+        let mut c = dense_collage();
+        c.drag_divider(DividerId(4), Vec2::new(10.0, 0.0)).unwrap();
+        let after = c.placements();
+        let width = after.get(4).map(|p| p.rect.width).unwrap_or(0.0);
+        assert!(width >= MIN_CELL_SIZE - 1e-5, "width {width}");
     }
 
     #[test]
@@ -688,7 +912,7 @@ mod tests {
                 background: Rgba::WHITE,
             },
         ];
-        for count in 1..=MAX_IMAGES {
+        for count in 1..=CLASSIC_MAX_IMAGES {
             let imgs = images(&vec![(300, 200); count]);
             for template in templates_for(count) {
                 for aspect in AspectRatio::ALL {
@@ -720,5 +944,172 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn max_style() -> Style {
+        Style {
+            spacing: MAX_SPACING,
+            padding: MAX_PADDING,
+            corner_radius: MAX_CORNER_RADIUS,
+            background: Rgba::WHITE,
+        }
+    }
+
+    fn assert_no_overlap(placements: &[CellPlacement], name: &str) {
+        for (i, a) in placements.iter().enumerate() {
+            for b in placements.iter().skip(i + 1) {
+                let (r, s) = (a.rect, b.rect);
+                let overlap_x = r.x < s.right() - EPS && s.x < r.right() - EPS;
+                let overlap_y = r.y < s.bottom() - EPS && s.y < r.bottom() - EPS;
+                assert!(!(overlap_x && overlap_y), "{name}: overlap");
+            }
+        }
+    }
+
+    fn assert_inside(placements: &[CellPlacement], content: Rect, name: &str) {
+        for p in placements {
+            let r = p.rect;
+            assert!(r.x >= content.x - EPS && r.y >= content.y - EPS, "{name}");
+            assert!(r.right() <= content.right() + EPS, "{name}");
+            assert!(r.bottom() <= content.bottom() + EPS, "{name}");
+        }
+    }
+
+    /// Every 10-36 template in every format at default and maximum style: valid, exact gaps,
+    /// and cells large enough (except 16:9 at maximum style, simulated minimum 0.0359 at 36
+    /// images, where only positive size is guaranteed).
+    #[test]
+    fn many_images_templates_produce_valid_cells_in_every_format() {
+        let styles = [(Style::default(), false), (max_style(), true)];
+        for count in (CLASSIC_MAX_IMAGES + 1)..=MAX_IMAGES {
+            let imgs = images(&vec![(300, 200); count]);
+            for template in templates_for(count) {
+                for aspect in AspectRatio::ALL {
+                    for (style, is_max) in styles {
+                        let mut c = Collage::new(&imgs, &template).unwrap();
+                        c.set_aspect(aspect);
+                        c.set_style(style);
+                        let name = format!("{} {aspect:?} max={is_max}", template.name());
+                        let eff = c.effective_style();
+                        let content = Rect::from_size(c.size()).inset(eff.padding);
+                        let placements = c.placements();
+                        assert_eq!(placements.len(), count, "{name}");
+                        assert_inside(&placements, content, &name);
+                        assert_no_overlap(&placements, &name);
+                        let need_min = !is_max || aspect != AspectRatio::Landscape16x9;
+                        for p in &placements {
+                            let r = p.rect;
+                            assert!(r.width > 0.0 && r.height > 0.0, "{name}: {r:?}");
+                            if need_min {
+                                assert!(
+                                    r.width >= MIN_CELL_SIZE && r.height >= MIN_CELL_SIZE,
+                                    "{name}: {r:?}"
+                                );
+                            }
+                        }
+                        for d in c.dividers() {
+                            let thickness = match d.dir {
+                                SplitDir::LeftRight => d.rect.width,
+                                SplitDir::TopBottom => d.rect.height,
+                            };
+                            assert!(
+                                (thickness - eff.spacing).abs() < 1e-5,
+                                "{name}: gap {thickness} vs {}",
+                                eff.spacing
+                            );
+                            let gap = d.rect;
+                            for p in &placements {
+                                let r = p.rect;
+                                let ox = r.x < gap.right() - EPS && gap.x < r.right() - EPS;
+                                let oy = r.y < gap.bottom() - EPS && gap.y < r.bottom() - EPS;
+                                assert!(!(ox && oy), "{name}: cell overlaps a gap");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn extent(rect: Rect, dir: SplitDir) -> f32 {
+        match dir {
+            SplitDir::LeftRight => rect.width,
+            SplitDir::TopBottom => rect.height,
+        }
+    }
+
+    /// Dragging any divider by a huge delta in either direction keeps the layout valid and no
+    /// cell shrinks below min(MIN_CELL_SIZE, its size before).
+    #[test]
+    fn many_images_drag_never_panics_overlaps_or_shrinks() {
+        let setups = [
+            (AspectRatio::Square, Style::default()),
+            (AspectRatio::Landscape16x9, max_style()),
+        ];
+        for count in [25, MAX_IMAGES] {
+            let imgs = images(&vec![(300, 200); count]);
+            for template in templates_for(count) {
+                for (aspect, style) in setups {
+                    let mut base = Collage::new(&imgs, &template).unwrap();
+                    base.set_aspect(aspect);
+                    base.set_style(style);
+                    let name = format!("{} {aspect:?}", template.name());
+                    let content =
+                        Rect::from_size(base.size()).inset(base.effective_style().padding);
+                    let before = base.placements();
+                    for d in base.dividers() {
+                        for delta in [Vec2::new(1.0, 1.0), Vec2::new(-1.0, -1.0)] {
+                            let mut c = base.clone();
+                            assert!(c.drag_divider(d.id, delta).is_ok(), "{name}");
+                            let after = c.placements();
+                            assert_eq!(after.len(), count, "{name}");
+                            assert_inside(&after, content, &name);
+                            assert_no_overlap(&after, &name);
+                            for (b, a) in before.iter().zip(&after) {
+                                assert_eq!(b.cell, a.cell, "{name}");
+                                let old = extent(b.rect, d.dir);
+                                let new = extent(a.rect, d.dir);
+                                assert!(
+                                    new >= MIN_CELL_SIZE.min(old) - 1e-5,
+                                    "{name}: {old} -> {new}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Pinned degraded case: with 36 images in `cols-7-7-7-7-8` at 16:9 and maximum style every
+    /// vertical cell is below MIN_CELL_SIZE, so the drag guard leaves TopBottom dividers as they
+    /// are (no panic, no change).
+    #[test]
+    fn many_images_dense_vertical_dividers_stay_pinned() {
+        let imgs = images(&vec![(300, 200); MAX_IMAGES]);
+        let template = templates_for(MAX_IMAGES)
+            .into_iter()
+            .find(|t| t.name() == "cols-7-7-7-7-8")
+            .unwrap();
+        let mut c = Collage::new(&imgs, &template).unwrap();
+        c.set_aspect(AspectRatio::Landscape16x9);
+        c.set_style(max_style());
+        let before = c.placements();
+        let mut checked = 0;
+        for d in c.dividers() {
+            if d.dir != SplitDir::TopBottom {
+                continue;
+            }
+            for delta in [
+                Vec2::new(0.0, 1.0),
+                Vec2::new(0.0, -1.0),
+                Vec2::new(1.0, 1.0),
+            ] {
+                assert!(c.drag_divider(d.id, delta).is_ok());
+                assert_eq!(c.placements(), before);
+            }
+            checked += 1;
+        }
+        assert!(checked > 0);
     }
 }

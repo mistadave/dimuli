@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 8
 current_phase_name: More Than 9 Images
 current_plan: 1
-status: ready_to_execute
-stopped_at: Phase 8 planned (08-01..08-06, plan checker passed after revision 1)
+status: complete
+stopped_at: Phase 8 complete — all 8 phases done
 last_updated: "2026-11-15T12:00:00.000Z"
 last_activity: 2026-11-15
-last_activity_desc: Phase 8 planned — 6 plans, cap 36 (D-06), checker passed
+last_activity_desc: Phase 8 approved by owner (cap 36); milestone 8 ticked; all milestones done
 state_head: ff11541208a5b6e669342453d41347f14e5b5d7b
 progress:
   total_phases: 8
-  completed_phases: 7
-  total_plans: 17
-  completed_plans: 17
+  completed_phases: 8
+  total_plans: 23
+  completed_plans: 23
   percent: 100
 ---
 
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-11-13)
 Phase: 8 of 8 (More Than 9 Images)
 Current Plan: -
 Total Plans in Phase: 6
-Plan: 1 of 6 in current phase
-Status: Phase 8 planned (6 plans), ready to execute
+Plan: 6 of 6 in current phase
+Status: All phases complete (1-8); milestone 8 approved by owner
 Last activity: 2026-11-15 — Phase 7: CLAUDE.md on cargo ndk + Gradle (emulator-5554 pinned, owner approved); agent files use the working Android clippy line.
 
 Progress: [██████████] 100% of planned plans
@@ -90,6 +90,7 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-07: Owner decision — Android 16 device and touch checklist (Task 3, ANDR-08) deferred to a final device test on both devices after all work is done; Android 14 smoke + insets pass
 - [Phase 06]: 06-01: D-08/D-17/D-18 — DECODE_MAX_PIXELS 64 MP, DECODE_MAX_ALLOC 256 MiB (checked via total_bytes), edge > 16384 reported as ImageTooLarge; PERF-01/POLI-02 not marked complete (shared with later plans)
 - [Phase 06]: 06-02: D-11 success auto-hide after 3 s (Claude's discretion), success colour Theme.success #b9e4c3; D-13/D-18 separate too-large text; late loading/export results dropped (LIFE-01 result half); ERRM-01/LIFE-01 not marked complete (continue in 06-04/06-05/06-08)
+- [Phase 08]: Owner approved Phase 8: cap 36 (D-06), effective style from 5 cells per line, 1-9 bit-identical, loading state after picker
 - [Phase 07]: 07-01: CLAUDE.md commands pin `-s emulator-5554` (owner approved); real device by replacing the serial
 - [Phase 06]: 06-08: Owner accepted Android 16 emulator + real Android 14 (OnePlus 9 Pro) as v1 acceptance; peak memory 489 MiB (emulator, 9 images) / 579 MiB (OnePlus)
 - [Phase 06]: 06-03: Rust owns the canvas size (fit_canvas, canvas written with the cells in one apply) against the aspect flicker; gesture fast path for move/pinch/scroll with full-refresh fallback on message_seq/screen change; Platform::share_supported without default body (desktop false); POLI-02 marked complete, POLI-01 waits for the 06-08 device check, PERF-01 continues in 06-04/06-06/06-08
@@ -120,4 +121,4 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 Last session: 2026-11-14T20:37:00.000Z
 Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-more-than-9-images/08-01-PLAN.md
+Resume file: none

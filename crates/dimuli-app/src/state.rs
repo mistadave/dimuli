@@ -95,6 +95,8 @@ pub(crate) enum ExportAction {
 /// Why the UI is blocked by the busy overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Busy {
+    /// The system Photo Picker is open or Kotlin is still copying the picked images.
+    Picking,
     /// Images are being decoded.
     Loading,
     /// The collage is being rendered.
@@ -105,7 +107,8 @@ impl Busy {
     /// Text shown below the progress indicator.
     pub(crate) fn text(self) -> &'static str {
         match self {
-            Busy::Loading => texts::LOADING,
+            // Same overlay as loading: from the user's view it is one continuous wait.
+            Busy::Picking | Busy::Loading => texts::LOADING,
             Busy::Exporting => texts::EXPORTING,
         }
     }
@@ -247,10 +250,39 @@ impl AppState {
 
     // --- loading ---
 
+    /// Marks the picker as opened and raises the loading overlay, so a second tap cannot open another
+    /// picker while Kotlin still copies the picks. `false` (nothing changed) unless the start screen is
+    /// shown and nothing is busy.
+    pub(crate) fn begin_picking(&mut self) -> bool {
+        if self.busy.is_some() || self.screen != Screen::Start {
+            return false;
+        }
+        self.busy = Some(Busy::Picking);
+        self.message = None;
+        true
+    }
+
+    /// The picker was cancelled: releases the overlay. Other busy states are left alone.
+    pub(crate) fn pick_cancelled(&mut self) {
+        if self.busy == Some(Busy::Picking) {
+            self.busy = None;
+        }
+    }
+
+    /// The picker failed: releases the overlay (if it was the picker's) and shows the error.
+    pub(crate) fn pick_failed(&mut self, text: impl Into<String>) {
+        if self.busy == Some(Busy::Picking) {
+            self.busy = None;
+        }
+        self.show_error(text);
+    }
+
     /// Marks loading as started. `false` if loading is already running or the editor is open.
     /// Only possible on the start screen: a late pick result must not wipe an open collage.
+    /// The waiting state of the picker ([`Busy::Picking`]) is accepted: its answer starts the loading.
     pub(crate) fn begin_loading(&mut self) -> bool {
-        if self.busy.is_some() || self.screen != Screen::Start {
+        let waiting = matches!(self.busy, None | Some(Busy::Picking));
+        if !waiting || self.screen != Screen::Start {
             return false;
         }
         self.busy = Some(Busy::Loading);
@@ -301,6 +333,7 @@ impl AppState {
             .and_then(|template| Collage::new(&metas, template));
         match collage {
             Ok(collage) => {
+                log::info!("collage ready: {} images", collage.cells().len());
                 self.collage = Some(collage);
                 self.templates = templates;
                 self.template_index = Some(0);
@@ -1082,6 +1115,61 @@ mod tests {
     }
 
     #[test]
+    fn too_many_images_notice_names_the_cap() {
+        let mut state = AppState::new();
+        state.begin_loading();
+        state.finish_loading(vec![Ok(loaded(10, 10))], true, 0);
+        assert_eq!(
+            state.message.unwrap().text,
+            "Es werden nur die ersten 36 Bilder verwendet."
+        );
+    }
+
+    #[test]
+    fn many_images_load_into_the_editor_without_notice() {
+        for count in [10, 12, 25, MAX_IMAGES] {
+            let dir = std::env::temp_dir().join(format!(
+                "dimuli-test-many_images-{count}-{}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            let edge = crate::images::preview_max_edge(count);
+            let results: Vec<_> = (0..count)
+                .map(|i| {
+                    let path = dir.join(format!("{i}.png"));
+                    let colour = image::Rgb([(i * 7) as u8, (i * 3) as u8, 255 - i as u8]);
+                    image::RgbImage::from_pixel(16, 12, colour)
+                        .save(&path)
+                        .unwrap();
+                    crate::images::load_image(&path, edge)
+                })
+                .collect();
+            let _ = std::fs::remove_dir_all(&dir);
+
+            let mut state = AppState::new();
+            assert!(state.begin_loading());
+            state.finish_loading(results, false, 0);
+            assert_eq!(state.screen, Screen::Editor, "count {count}");
+            let collage = state.collage.as_ref().unwrap();
+            assert_eq!(collage.cells().len(), count);
+            assert!(state.message.is_none(), "no hint for {count} images");
+            assert!((4..=6).contains(&state.templates.len()), "count {count}");
+            assert_eq!(state.template_index, Some(0));
+
+            state.set_canvas_area(411.0, 640.0);
+            let collage = state.collage.as_ref().unwrap();
+            let views = view::cell_views(
+                collage,
+                &state.images,
+                state.canvas,
+                SwapHighlight::default(),
+            );
+            assert_eq!(views.len(), count);
+            assert!(views.iter().all(|v| v.width > 0.0 && v.height > 0.0));
+        }
+    }
+
+    #[test]
     fn loading_cannot_start_twice() {
         let mut state = AppState::new();
         assert!(state.begin_loading());
@@ -1216,6 +1304,82 @@ mod tests {
         assert!(state.swap_highlight().target.is_some());
         state.release(1.0, 1.0); // in the padding
         assert_eq!(image_ids(&state), before);
+    }
+
+    #[test]
+    fn pick_shows_the_loading_overlay_until_the_picker_answers() {
+        let mut state = AppState::new();
+        state.show_error("old");
+        assert!(state.begin_picking());
+        assert_eq!(state.busy, Some(Busy::Picking));
+        assert_eq!(Busy::Picking.text(), crate::texts::LOADING);
+        assert_eq!(state.message, None);
+    }
+
+    #[test]
+    fn pick_is_refused_while_waiting_busy_or_in_the_editor() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        assert!(!state.begin_picking());
+        assert_eq!(state.busy, Some(Busy::Picking));
+
+        for busy in [Busy::Loading, Busy::Exporting] {
+            let mut state = AppState::new();
+            state.busy = Some(busy);
+            assert!(!state.begin_picking());
+            assert_eq!(state.busy, Some(busy));
+        }
+
+        let mut state = editor(&[(100, 100)]);
+        assert!(!state.begin_picking());
+        assert!(state.busy.is_none());
+    }
+
+    #[test]
+    fn pick_cancel_clears_the_loading_overlay() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        state.pick_cancelled();
+        assert!(state.busy.is_none());
+        assert_eq!(state.message, None);
+        assert_eq!(state.screen, Screen::Start);
+    }
+
+    #[test]
+    fn pick_failure_clears_the_overlay_and_shows_the_error() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        state.pick_failed(crate::texts::PICK_FAILED);
+        assert!(state.busy.is_none());
+        let message = state.message.unwrap();
+        assert_eq!(message.kind, MessageKind::Error);
+        assert_eq!(message.text, crate::texts::PICK_FAILED);
+    }
+
+    #[test]
+    fn pick_result_starts_loading_from_the_waiting_state() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        assert!(state.begin_loading());
+        assert_eq!(state.busy, Some(Busy::Loading));
+        state.finish_loading(vec![Ok(loaded(10, 10))], false, 0);
+        assert_eq!(state.screen, Screen::Editor);
+        assert!(state.busy.is_none());
+    }
+
+    #[test]
+    fn pick_answers_do_not_touch_other_busy_states() {
+        for busy in [Busy::Loading, Busy::Exporting] {
+            let mut state = AppState::new();
+            state.busy = Some(busy);
+            state.pick_cancelled();
+            assert_eq!(state.busy, Some(busy));
+        }
+        let mut state = AppState::new();
+        state.busy = Some(Busy::Loading);
+        state.pick_failed(crate::texts::PICK_FAILED);
+        assert_eq!(state.busy, Some(Busy::Loading));
+        assert_eq!(state.message.unwrap().text, crate::texts::PICK_FAILED);
     }
 
     #[test]

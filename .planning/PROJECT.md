@@ -28,7 +28,7 @@ A user can turn a handful of photos into one well-arranged collage image and get
 - [x] Android shell: Gradle project + Kotlin `MainActivity : NativeActivity`, JNI bridge, Photo Picker, MediaStore save, share sheet, edge-to-edge insets, back/predictive back, 16 KB alignment, touch editing on device — Phase 5 (ANDR-01..08)
 - [x] Polish: lifecycle (pause/resume keeps state), performance with large images, complete German error messages, open M3/M4 review notes, v1 acceptance on a real Android 16 device — Phase 6 (LIFE-01, PERF-01, ERRM-01, POLI-01..02, ACPT-01)
 - [x] CLAUDE.md documents the `cargo ndk` + Gradle flow instead of `cargo-apk` — Phase 7 (ENV-03)
-- [ ] More than 9 images via a grid generator in `templates` (goal: no fixed limit) — Phase 8 (MANY-01..03); committed follow-up beyond the v1 success metric
+- [x] More than 9 images (cap 36) via a grid generator in `templates` (goal: no fixed limit) — Phase 8 (MANY-01..03); committed follow-up beyond the v1 success metric
 
 ### Out of Scope
 

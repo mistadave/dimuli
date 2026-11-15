@@ -189,6 +189,15 @@ impl LayoutNode {
         walk(self, &mut 0);
     }
 
+    /// Largest number of cells side by side along one axis on any line through the layout (the fullest row or
+    /// column). Depends only on the tree structure, so dragging dividers never changes it.
+    pub fn max_cells_per_line(&self) -> usize {
+        let gaps = self
+            .gaps(SplitDir::LeftRight)
+            .max(self.gaps(SplitDir::TopBottom));
+        gaps as usize + 1
+    }
+
     /// Number of gaps along `dir` on the longest path through this subtree.
     fn gaps(&self, dir: SplitDir) -> u32 {
         match self {
@@ -355,6 +364,40 @@ mod tests {
         );
         node.renumber();
         node
+    }
+
+    #[test]
+    fn max_cells_per_line_counts_the_fullest_line() {
+        use crate::templates::{templates_for, test_grid};
+        let by_name = |count: usize, name: &str| {
+            templates_for(count)
+                .into_iter()
+                .find(|t| t.name() == name)
+                .map(|t| t.layout().max_cells_per_line())
+        };
+        assert_eq!(by_name(1, "single"), Some(1));
+        assert_eq!(by_name(2, "rows-2"), Some(2));
+        assert_eq!(by_name(9, "rows-3-3-3"), Some(3));
+        assert_eq!(by_name(5, "rows-1-1-1-2"), Some(4));
+        assert_eq!(by_name(5, "big-left-5"), Some(4));
+        let grid = |dir, shape: &[usize]| test_grid(dir, shape).layout().max_cells_per_line();
+        assert_eq!(grid(SplitDir::TopBottom, &[5, 5]), 5);
+        assert_eq!(grid(SplitDir::LeftRight, &[6, 7]), 7);
+    }
+
+    #[test]
+    fn max_cells_per_line_ignores_dragging() {
+        let template = crate::templates::test_grid(SplitDir::TopBottom, &[5, 5]);
+        let mut layout = template.layout().clone();
+        let bounds = Rect::from_size(crate::geometry::Size::new(1.0, 1.0));
+        let ids: Vec<_> = layout.dividers(bounds, 0.01).iter().map(|d| d.id).collect();
+        assert!(!ids.is_empty());
+        for id in ids {
+            layout
+                .drag_divider(bounds, 0.01, id, Vec2::new(0.07, 0.07))
+                .unwrap();
+            assert_eq!(layout.max_cells_per_line(), 5);
+        }
     }
 
     #[test]

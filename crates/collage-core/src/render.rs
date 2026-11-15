@@ -81,7 +81,7 @@ pub(crate) fn compose(
     opts: ExportOptions,
 ) -> Result<RgbImage, CoreError> {
     let (width, height) = output_size(collage, opts.long_edge);
-    let style = collage.style();
+    let style = collage.effective_style();
     let mut canvas = RgbImage::from_pixel(width, height, background_rgb(style.background));
     let size = collage.size();
     // Pixels per collage unit; x and y are equal up to rounding of the canvas size.
@@ -388,6 +388,17 @@ mod tests {
         (collage, sources)
     }
 
+    /// Like [`setup`], but with an explicit template.
+    fn setup_with(
+        dir: &Path,
+        images: &[RgbImage],
+        template: &crate::templates::Template,
+    ) -> (Collage, Vec<ImageSource>) {
+        let (default, sources) = setup(dir, images);
+        let metas: Vec<ImageMeta> = default.cells().iter().map(|c| c.image).collect();
+        (Collage::new(&metas, template).unwrap(), sources)
+    }
+
     fn opts(long_edge: u32) -> ExportOptions {
         ExportOptions {
             long_edge,
@@ -418,6 +429,24 @@ mod tests {
         for (a, e) in actual.iter().zip(expected.iter()) {
             assert!(a.abs_diff(*e) <= 2, "{actual:?} != {expected:?}");
         }
+    }
+
+    #[test]
+    fn export_uses_the_effective_corner_radius() {
+        let dir = temp_dir("effective-radius");
+        let images = vec![solid(16, 12, RED); 5];
+        let template = crate::templates::test_grid(crate::layout::SplitDir::TopBottom, &[5]);
+        let (mut collage, sources) = setup_with(&dir, &images, &template);
+        collage.set_aspect(AspectRatio::Square);
+        collage.set_style(style(0.0, 0.0, crate::collage::MAX_CORNER_RADIUS));
+        let canvas = compose(&collage, &sources, opts(64)).unwrap();
+        // Stored radius 6.4 px would leave (1, 1) pure background; the effective 5.12 px puts the arc through it.
+        let corner = px(&canvas, 1, 1);
+        assert!(
+            corner.iter().zip(BG_PX).any(|(a, b)| a.abs_diff(b) > 2),
+            "{corner:?}"
+        );
+        assert_color(px(&canvas, 6, 32), RED);
     }
 
     #[test]
@@ -582,11 +611,32 @@ mod tests {
     fn max_images_collage_renders() {
         let dir = temp_dir("max");
         let imgs: Vec<RgbImage> = (0..crate::MAX_IMAGES as u8)
-            .map(|i| solid(16, 12, [i * 20, 100, 50]))
+            .map(|i| solid(16, 12, [(i % 12) * 20, 100, 50]))
             .collect();
         let (collage, sources) = setup(&dir, &imgs);
         let canvas = compose(&collage, &sources, opts(63)).unwrap();
         assert_eq!(canvas.width(), 63);
+    }
+
+    #[test]
+    fn many_images_export_shows_every_cell() {
+        let dir = temp_dir("many");
+        let imgs: Vec<RgbImage> = (0..12u8)
+            .map(|i| solid(16, 12, [i * 20, 100, 50]))
+            .collect();
+        let (mut collage, sources) = setup(&dir, &imgs);
+        collage.set_aspect(AspectRatio::Square);
+        collage.set_style(style(0.02, 0.02, 0.0));
+        let canvas = compose(&collage, &sources, opts(64)).unwrap();
+        let placements = collage.placements();
+        assert_eq!(placements.len(), 12);
+        for (i, p) in placements.iter().enumerate() {
+            let center = Vec2::new(
+                p.rect.x + p.rect.width / 2.0,
+                p.rect.y + p.rect.height / 2.0,
+            );
+            assert_color(at(&canvas, center), [i as u8 * 20, 100, 50]);
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use collage_core::collage::{MAX_CORNER_RADIUS, MAX_PADDING, MAX_SPACING};
+use collage_core::collage::{MAX_CORNER_RADIUS, MAX_PADDING, MAX_SPACING, style_scale};
 use collage_core::{
     CellId, Collage, Divider, DividerId, Rect, Rgba, Size, SplitDir, Template, Vec2,
 };
@@ -196,9 +196,12 @@ pub(crate) fn pick_handle(handles: &[(DividerId, Rect)], point: Vec2) -> Option<
 
 /// Cell rectangles of `template` on the unit square, for the preview thumbnails (`0.0..=1.0`).
 pub(crate) fn template_preview_rects(template: &Template) -> Vec<Rect> {
+    // Same rule as the collage itself: dense grids get a smaller gap so their thumbnail cells stay visible.
+    // The factor is exactly 1.0 for up to four cells per line, so thumbnails of 1-9 images are unchanged.
+    let spacing = TEMPLATE_PREVIEW_SPACING * style_scale(template.layout().max_cells_per_line());
     template
         .layout()
-        .cell_rects(Rect::new(0.0, 0.0, 1.0, 1.0), TEMPLATE_PREVIEW_SPACING)
+        .cell_rects(Rect::new(0.0, 0.0, 1.0, 1.0), spacing)
         .into_iter()
         .map(|(_, rect)| rect)
         .collect()
@@ -256,7 +259,8 @@ pub(crate) fn cell_views_into(
 ) {
     out.clear();
     let scale = pixels_per_unit(canvas);
-    let radius = collage.style().corner_radius;
+    // The export draws the effective radius (scaled for dense grids); the preview must match.
+    let radius = collage.effective_style().corner_radius;
     for placement in collage.placements() {
         let Some(stored) = images.get(placement.image) else {
             log::error!("no preview for image {:?}", placement.image);
@@ -747,6 +751,141 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn template_previews_of_one_to_nine_are_unchanged() {
+        let unit = Rect::new(0.0, 0.0, 1.0, 1.0);
+        for count in 1..=9 {
+            for template in templates_for(count) {
+                let expected: Vec<Rect> = template
+                    .layout()
+                    .cell_rects(unit, TEMPLATE_PREVIEW_SPACING)
+                    .into_iter()
+                    .map(|(_, r)| r)
+                    .collect();
+                // Bit identity: the scale factor is exactly 1.0 up to four cells per line.
+                assert_eq!(template_preview_rects(&template), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn template_previews_of_dense_grids_use_scaled_spacing() {
+        let template = &templates_for(36)[2];
+        let rects = template_preview_rects(template);
+        let gap = rects[1].x - rects[0].right();
+        assert!((gap - 0.03).abs() < 1e-6, "gap {gap}");
+        for count in 10..=collage_core::MAX_IMAGES {
+            for template in templates_for(count) {
+                for r in template_preview_rects(&template) {
+                    assert!(r.width >= 0.05 && r.height >= 0.05, "{count}: {r:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cell_views_use_the_effective_corner_radius() {
+        let canvas = Size::new(400.0, 400.0);
+        let max = collage_core::Style {
+            corner_radius: MAX_CORNER_RADIUS,
+            ..collage_core::Style::default()
+        };
+        let (store, metas) = store_with(36, (64, 48));
+        let mut dense = Collage::new(&metas, &templates_for(36)[0]).unwrap();
+        dense.set_style(max);
+        let effective = dense.effective_style().corner_radius;
+        assert!(effective < MAX_CORNER_RADIUS);
+        let views = cell_views(&dense, &store, canvas, SwapHighlight::default());
+        assert_eq!(views.len(), 36);
+        for (view, placement) in views.iter().zip(dense.placements()) {
+            let rect = rect_to_pixels(placement.rect, 400.0);
+            let want = corner_radius_px(effective, rect, 400.0);
+            let stored = corner_radius_px(MAX_CORNER_RADIUS, rect, 400.0);
+            assert!((view.corner_radius - want).abs() < 1e-4);
+            assert!(view.corner_radius < stored);
+        }
+
+        let (store, metas) = store_with(9, (64, 48));
+        let mut classic = Collage::new(&metas, &templates_for(9)[0]).unwrap();
+        classic.set_style(max);
+        let views = cell_views(&classic, &store, canvas, SwapHighlight::default());
+        for (view, placement) in views.iter().zip(classic.placements()) {
+            let rect = rect_to_pixels(placement.rect, 400.0);
+            let want = corner_radius_px(MAX_CORNER_RADIUS, rect, 400.0);
+            assert!((view.corner_radius - want).abs() < 1e-4);
+        }
+    }
+
+    fn dense_canvas(aspect: collage_core::AspectRatio) -> Size {
+        fit_canvas(Size::new(411.0, 640.0), aspect.size())
+    }
+
+    fn dense_collage(
+        count: usize,
+        template: &Template,
+        aspect: collage_core::AspectRatio,
+    ) -> Collage {
+        let (_, metas) = store_with(count, (64, 48));
+        let mut collage = Collage::new(&metas, template).unwrap();
+        collage.set_aspect(aspect);
+        collage
+    }
+
+    #[test]
+    fn divider_handles_stay_grabbable_with_many_images() {
+        for count in [25, collage_core::MAX_IMAGES] {
+            for template in templates_for(count) {
+                for aspect in collage_core::AspectRatio::ALL {
+                    let collage = dense_collage(count, &template, aspect);
+                    let canvas = dense_canvas(aspect);
+                    let handles = divider_handles(&collage, canvas, 48.0);
+                    assert!(!handles.is_empty());
+                    for (id, rect) in &handles {
+                        assert_eq!(
+                            pick_handle(&handles, rect.center()),
+                            Some(*id),
+                            "{count} images, {aspect:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cells_keep_free_area_beside_the_handles_at_the_cap() {
+        // 25 images in 16:9 leave three cells fully under handles; the owner accepted that (D-07), so only
+        // the cap is asserted here.
+        let count = collage_core::MAX_IMAGES;
+        let template = &templates_for(count)[0];
+        for aspect in collage_core::AspectRatio::ALL {
+            let collage = dense_collage(count, template, aspect);
+            let canvas = dense_canvas(aspect);
+            let scale = pixels_per_unit(canvas);
+            let handles = divider_handles(&collage, canvas, 48.0);
+            let mut worst = 1.0_f32;
+            for placement in collage.placements() {
+                let rect = rect_to_pixels(placement.rect, scale);
+                let (mut total, mut free) = (0_u32, 0_u32);
+                let (x0, x1) = (rect.x.round() as i32, rect.right().round() as i32);
+                let (y0, y1) = (rect.y.round() as i32, rect.bottom().round() as i32);
+                for y in y0..y1 {
+                    for x in x0..x1 {
+                        total += 1;
+                        let centre = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+                        if pick_handle(&handles, centre).is_none() {
+                            free += 1;
+                        }
+                    }
+                }
+                assert!(total > 0);
+                worst = worst.min(free as f32 / total as f32);
+            }
+            println!("free area at {count} images, {aspect:?}: worst cell {worst:.3}");
+            assert!(worst >= 0.25, "{aspect:?}: {worst}");
         }
     }
 

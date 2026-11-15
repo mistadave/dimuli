@@ -23,5 +23,9 @@ pub use layout::{CellId, Divider, DividerId, LayoutNode, MIN_CELL_SIZE, SplitDir
 pub use render::{EXPORT_LONG_EDGE, ExportOptions, ImageSource, render};
 pub use templates::{Template, templates_for};
 
-/// Maximum number of images in one collage (v1 limit, see `docs/ARCHITECTURE.md`).
-pub const MAX_IMAGES: usize = 9;
+/// Maximum number of images in one collage, a 6x6 grid.
+///
+/// Above it the 48 px divider handles cover too much of the cells on a phone for pan and swap
+/// (see `docs/ARCHITECTURE.md`). The core keeps rejecting more ([`CoreError::TooManyImages`], empty
+/// `templates_for`); this constant is the single source of the cap.
+pub const MAX_IMAGES: usize = 36;

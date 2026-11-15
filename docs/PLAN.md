@@ -99,8 +99,8 @@ Was daraus folgt:
     - Offene Review-Hinweise aus M4: einige Render-Tests nutzen Ausgabegrößen über 64 px; Desktop-„Teilen“
       rendert erst voll und meldet dann „nicht verfügbar“.
 - [x] 7. **CLAUDE.md aktualisieren:** `cargo-apk`-Befehle durch den `cargo ndk` + Gradle-Ablauf ersetzen und die Struktur ergänzen.
-- [ ] 8. **Mehr als 9 Bilder:** Raster-Generator in `templates`, der für jede Bildanzahl ein Layout erzeugt;
-  `MAX_IMAGES` anheben (Ziel: kein festes Limit, die Felder werden kleiner). Speicher und Bedienbarkeit
+- [x] 8. **Mehr als 9 Bilder:** Raster-Generator in `templates`, der für jede Bildanzahl ein Layout erzeugt;
+  `MAX_IMAGES` auf 36 angehoben (6x6; darüber verdecken die Trennlinien-Griffe zu viel der Felder). Speicher und Bedienbarkeit
   mit vielen Bildern im Emulator prüfen.
 
 ## Wichtige Abhängigkeiten
@@ -121,5 +121,5 @@ dimuli nutzt Slint unter der **Slint Royalty-free License 2.0**. Bedingung: Die 
 - Emulator (API 33, API 36 und neueste API 37): APK mit `adb install` installieren und durchspielen. Zusätzlich prüfen: Inhalte
   werden nicht von System-Leisten verdeckt, Zurück-Geste funktioniert, 16-KB-Alignment besteht. Ablauf: Photo Picker mit 3–5 Bildern, Trennlinien ziehen,
   zoomen, tauschen, in die Galerie speichern (in Google Fotos prüfen), Teilen-Dialog öffnen,
-  App pausieren und fortsetzen. Große Fotos (50/80 MP) sowie HEIC/WebP laden und speichern; Hinweis nach einem Neustart
+  App pausieren und fortsetzen. Viele Bilder (12 und 25 im Emulator, 36 auf dem Desktop). Große Fotos (50/80 MP) sowie HEIC/WebP laden und speichern; Hinweis nach einem Neustart
   durch das System prüfen. Logs mit `adb logcat -s dimuli`.
