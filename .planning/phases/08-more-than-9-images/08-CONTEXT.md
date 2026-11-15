@@ -24,11 +24,16 @@ Not in this phase: new layout styles beyond grids for >9, canvas zoom, persisten
 ### Dividers with small cells (discussed)
 - **D-05:** Divider handles keep today's behaviour: one 48 px square handle per divider, on overlap the handle whose centre is nearest to the finger wins. No hiding of handles and no row/column-wide dragging. Verify on the emulator with 25 images that dividers are still grabbable; `MIN_CELL_SIZE` (5 %) stays.
 
+### Decisions after research (owner, 2026-11-15)
+- **D-06:** Image cap is **36** (`MAX_IMAGES = 36`, 6x6 grid): the highest count at which every cell keeps at least 30 % free of divider handles in every format (08-RESEARCH). The picker is asked for 36; more paths (desktop CLI) are cut with the existing "too many images" hint naming 36. Supersedes the "picker max ~100" discretion item.
+- **D-07:** Handle occlusion at high counts in wide formats (e.g. 16:9 with 25 images, ~3 cells fully covered) is accepted; D-05 stands, handle size is not changed.
+- **D-08:** Show the loading state immediately after the picker returns (while Kotlin copies), so a second tap on "Bilder wählen" cannot interfere; Rust-only change, no new Kotlin.
+
 ### Claude's Discretion
-- **Upper limit:** "no fixed limit" as the goal; the practical cap is the system Photo Picker's own maximum (`MediaStore.getPickImagesMaxLimit()`, typically 100). The app asks the picker for that many; the core accepts any count >= 1. Desktop uses the same cap for CLI arguments. If more paths still arrive than the cap, the existing cut-and-hint path stays (with the new number). Researcher/planner may lower the cap if memory or `MIN_CELL_SIZE` geometry (cells must fit at 5 %) proves it necessary; record the reason.
+- **Upper limit:** decided by the owner as D-06 (36).
 - **Templates for 10+ images:** even grids only (rows and columns, most balanced shapes first, as `grid_shapes`/`lines` do today), a handful of variants (about 4-6) in the template bar; an incomplete last line uses wider equal cells (no gaps), as the existing `lines()` does. No "big image + rest" variants above 9. The 4x4 caps (`MAX_LINES`, `MAX_PER_LINE`) are lifted only for counts above 9 so 1-9 outputs stay identical.
 - **Memory:** preview size scales down with the image count so the total preview memory stays roughly at the 9-image level (9 x `PREVIEW_MAX_EDGE` 2048 today); exact formula is the planner's choice. Export keeps 3000 px and decodes sources one at a time as today.
-- **Test sizes:** emulator checks with 12 and 25 images (load, dividers, pan/zoom, swap, export, peak memory via `run-as … /proc/<pid>/status`); host tests over a range including 10, 12, 16, 25, 50 and the cap.
+- **Test sizes:** emulator checks with 12 and 25 images (load, dividers, pan/zoom, swap, export, peak memory via `run-as … /proc/<pid>/status`); host tests over a range including 10, 12, 16, 25 and the cap 36.
 
 </decisions>
 

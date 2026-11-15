@@ -3,11 +3,11 @@ gsd_state_version: "1.0"
 current_phase: 8
 current_phase_name: More Than 9 Images
 current_plan: 1
-status: ready_to_plan
-stopped_at: Phase 8 context gathered
+status: ready_to_execute
+stopped_at: Phase 8 planned (08-01..08-06, plan checker passed after revision 1)
 last_updated: "2026-11-15T12:00:00.000Z"
 last_activity: 2026-11-15
-last_activity_desc: Phase 8 discussed — effective spacing/corners scale from 5+ cells per line; 1-9 pixel-identical
+last_activity_desc: Phase 8 planned — 6 plans, cap 36 (D-06), checker passed
 state_head: ff11541208a5b6e669342453d41347f14e5b5d7b
 progress:
   total_phases: 8
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-11-13)
 
 Phase: 8 of 8 (More Than 9 Images)
 Current Plan: -
-Total Plans in Phase: TBD
-Plan: not planned yet
-Status: Phase 8 context gathered; ready to plan
+Total Plans in Phase: 6
+Plan: 1 of 6 in current phase
+Status: Phase 8 planned (6 plans), ready to execute
 Last activity: 2026-11-15 — Phase 7: CLAUDE.md on cargo ndk + Gradle (emulator-5554 pinned, owner approved); agent files use the working Android clippy line.
 
 Progress: [██████████] 100% of planned plans
@@ -120,4 +120,4 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 Last session: 2026-11-14T20:37:00.000Z
 Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-more-than-9-images/08-CONTEXT.md
+Resume file: .planning/phases/08-more-than-9-images/08-01-PLAN.md

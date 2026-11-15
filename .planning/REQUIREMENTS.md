@@ -72,7 +72,7 @@ Committed follow-up work from `docs/PLAN.md` milestone 8. Out of scope for the v
 ### Many Images
 
 - [ ] **MANY-01**: A grid generator in `templates` produces a valid layout (no overlaps, correct spacing) for any image count above 9, in addition to the existing templates for 1-9
-- [ ] **MANY-02**: The fixed `MAX_IMAGES` limit of 9 is raised or removed (goal: no fixed limit, cells simply get smaller): picking and loading accept more than 9 images and the "too many images" hint no longer appears
+- [ ] **MANY-02**: The fixed `MAX_IMAGES` limit of 9 is raised to 36 (D-06, 6x6 grid; cells simply get smaller): picking and loading accept more than 9 images (up to 36) and the "too many images" hint no longer appears for selections up to 36
 - [ ] **MANY-03**: Memory use and usability with many images are verified in the emulator (loading, dividers, pan/zoom, swap and export remain operable and stable)
 
 ## v2 Requirements

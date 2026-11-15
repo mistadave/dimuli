@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Android Shell** - Gradle project, Kotlin activity, JNI bridge, Photo Picker, MediaStore, sharing; running in the emulator and on a device
 - [x] **Phase 6: Polish and v1 Acceptance** - Lifecycle, performance with large images, error messages, open review notes, real-device acceptance
 - [x] **Phase 7: Developer Docs for the Android Build** - Replace `cargo-apk` commands in `CLAUDE.md` with the `cargo ndk` + Gradle flow
-- [ ] **Phase 8: More Than 9 Images** - Grid generator for any image count; lift `MAX_IMAGES`
+- [ ] **Phase 8: More Than 9 Images** - Grid generator for counts above 9; raise `MAX_IMAGES` to 36 (D-06)
 
 ## Phase Details
 
@@ -128,14 +128,22 @@ Plans:
 - [x] 07-01-PLAN.md — CLAUDE.md: `cargo ndk` + Gradle build/check/install/start/log commands, Android lint, structure with `android/`; every command run as written on dimuli_api36; agent commands listed for the owner; milestone 7 ticked
 
 ### Phase 8: More Than 9 Images
-**Goal**: Users can build a collage from more than 9 images; the app no longer enforces a fixed image limit (`docs/PLAN.md` milestone 8; committed follow-up beyond the v1 success metric)
+**Goal**: Users can build a collage from more than 9 images; the image limit is raised from 9 to 36 (D-06, a 6x6 grid) (`docs/PLAN.md` milestone 8; committed follow-up beyond the v1 success metric)
 **Depends on**: Phase 6 (hard dependency is Phase 5 for the emulator checks; Phase 6 performance work comes first)
 **Requirements**: MANY-01, MANY-02, MANY-03
 **Success Criteria** (what must be TRUE):
   1. Picking more than 9 images (e.g. 12 and 25; test sizes to be confirmed in discuss-phase) opens the editor with a valid grid layout in which all images are visible and no cells overlap
-  2. The "too many images" hint no longer appears, and the 1-9 image templates behave exactly as before
+  2. The "too many images" hint no longer appears for selections up to the new limit of 36 (D-06), and the 1-9 image templates behave exactly as before
   3. With many images, dividers, pan/zoom, swap and export stay operable and stable on the emulator without out-of-memory
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Core: freeze 1-9 (legacy copy, raw-style geometry, green first), effective style `4/n` from 5 cells per line via `Collage::effective_style()` for geometry, drags and export (D-01..D-04)
+- [ ] 08-02-PLAN.md — Core: grid generator for 10-36 (two most balanced line counts, max 6 templates), `MAX_IMAGES` = 36 (D-06), validity and drag matrix for every format and style
+- [ ] 08-03-PLAN.md — App: preview edge by count, effective radius in the preview, scaled thumbnails, D-05/D-06 handle tests, loading overlay from "Bilder wählen" until the picker answers (D-08)
+- [ ] 08-04-PLAN.md — Emulator: 12 and 25 photos via the Photo Picker (load, divider drags, pan, swap, template, 16:9, save), peak memory, times, D-08 cancel and repeated taps
+- [ ] 08-05-PLAN.md — Code review + critical fixes, full gates, docs record the cap, preview budget, effective style and pick flow as built
+- [ ] 08-06-PLAN.md — Owner check on desktop (36 images), emulator or phone; cap 36 confirmed; milestone 8 ticked
 **UI hint**: yes
 
 ## Progress
@@ -152,4 +160,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Android Shell | 8/8 | Complete | 2026-11-15 |
 | 6. Polish and v1 Acceptance | 8/8 | Complete | 2026-11-15 |
 | 7. Developer Docs for the Android Build | 1/1 | Complete | 2026-11-15 |
-| 8. More Than 9 Images | 0/TBD | Not started | - |
+| 8. More Than 9 Images | 0/6 | Not started | - |
