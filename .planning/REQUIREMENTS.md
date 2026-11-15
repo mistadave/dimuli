@@ -47,23 +47,23 @@ Requirements for the first release. v1 success metric: on a real Android 16 devi
 
 ### Android Platform
 
-- [ ] **ANDR-01**: A Gradle project under `android/` (Kotlin `MainActivity : NativeActivity`, manifest, minSdk 33 / targetSdk 37) packages `libdimuli.so` built by `cargo ndk` for `arm64-v8a` and `x86_64`; the APK installs and launches to the start screen on emulators API 33, API 36 and API 37 (new AVD `dimuli_api33`) and on real devices with Android 14 and Android 16
-- [ ] **ANDR-02**: User can pick up to 9 images with the system Photo Picker; the selected URIs are copied into the app cache and delivered to Rust via the JNI bridge; cancelling the picker leaves the start screen unchanged
-- [ ] **ANDR-03**: User can save the collage to the gallery through `MediaStore.Images` (`Pictures/dimuli`) without any storage permission, and sees a success or error message
-- [ ] **ANDR-04**: User can share the collage via the system share sheet (cache file, own minimal `ContentProvider` instead of AndroidX `FileProvider`, `ACTION_SEND`), and sees an error message if sharing fails
-- [ ] **ANDR-05**: The UI is edge-to-edge on every supported version (enabled explicitly on Android 13/14, where it is not enforced): system-bar insets reach the UI through Slint's built-in Android `safe-area-insets` (Kotlin only enables edge-to-edge on Android 13/14), so no content is covered by status or navigation bars
-- [ ] **ANDR-06**: The back gesture works (Predictive Back callback forwarded to Rust): in the editor it asks for confirmation and returns to the start screen, on the start screen it closes the app
-- [ ] **ANDR-07**: The native library is 16 KB page aligned, verified with `zipalign -c -P 16` or the APK Analyzer
-- [ ] **ANDR-08**: All editor interactions work with fingers on Android (divider drag, pinch zoom, pan, long-press swap, template bar, settings panel), including the swallowed-input busy overlay during export
+- [x] **ANDR-01**: A Gradle project under `android/` (Kotlin `MainActivity : NativeActivity`, manifest, minSdk 33 / targetSdk 37) packages `libdimuli.so` built by `cargo ndk` for `arm64-v8a` and `x86_64`; the APK installs and launches to the start screen on emulators API 33, API 36 and API 37 (new AVD `dimuli_api33`) and on real devices with Android 14 and Android 16
+- [x] **ANDR-02**: User can pick up to 9 images with the system Photo Picker; the selected URIs are copied into the app cache and delivered to Rust via the JNI bridge; cancelling the picker leaves the start screen unchanged
+- [x] **ANDR-03**: User can save the collage to the gallery through `MediaStore.Images` (`Pictures/dimuli`) without any storage permission, and sees a success or error message
+- [x] **ANDR-04**: User can share the collage via the system share sheet (cache file, own minimal `ContentProvider` instead of AndroidX `FileProvider`, `ACTION_SEND`), and sees an error message if sharing fails
+- [x] **ANDR-05**: The UI is edge-to-edge on every supported version (enabled explicitly on Android 13/14, where it is not enforced): system-bar insets reach the UI through Slint's built-in Android `safe-area-insets` (Kotlin only enables edge-to-edge on Android 13/14), so no content is covered by status or navigation bars
+- [x] **ANDR-06**: The back gesture works (Predictive Back callback forwarded to Rust): in the editor it asks for confirmation and returns to the start screen, on the start screen it closes the app
+- [x] **ANDR-07**: The native library is 16 KB page aligned, verified with `zipalign -c -P 16` or the APK Analyzer
+- [x] **ANDR-08**: All editor interactions work with fingers on Android (divider drag, pinch zoom, pan, long-press swap, template bar, settings panel), including the swallowed-input busy overlay during export
 
 ### Robustness and Polish
 
-- [ ] **LIFE-01**: Pausing and resuming the app (home button, app switcher, returning from Photo Picker or share sheet) keeps the current collage and all edits
-- [ ] **PERF-01**: Large photos (e.g. 12 MP and above from a real device camera) load, edit and export without crash, out-of-memory or visible gesture stutter; pointer events during a gesture update only the affected cells (no full snapshot allocation); loading avoids the unnecessary pixel-buffer copy; the `DECODE_MAX_PIXELS` value for devices (100 MP vs 64 MP) is decided and recorded
-- [ ] **ERRM-01**: Every failure path (unreadable image, pick failure, export, save, share) shows a short German message that says what happened and what the user can do, without technical details, and logs the error with `log::error!`
-- [ ] **POLI-01**: Changing the aspect ratio shows no intermediate one-frame flicker (M3 review note)
+- [x] **LIFE-01**: Pausing and resuming the app (home button, app switcher, returning from Photo Picker or share sheet) keeps the current collage and all edits
+- [x] **PERF-01**: Large photos (e.g. 12 MP and above from a real device camera) load, edit and export without crash, out-of-memory or visible gesture stutter; pointer events during a gesture update only the affected cells (no full snapshot allocation); loading avoids the unnecessary pixel-buffer copy; the `DECODE_MAX_PIXELS` value for devices (100 MP vs 64 MP) is decided and recorded
+- [x] **ERRM-01**: Every failure path (unreadable image, pick failure, export, save, share) shows a short German message that says what happened and what the user can do, without technical details, and logs the error with `log::error!`
+- [x] **POLI-01**: Changing the aspect ratio shows no intermediate one-frame flicker (M3 review note)
 - [x] **POLI-02**: Render tests use output sizes of at most 64 px as required by the coding guidelines, and desktop "Teilen" reports "nicht verfügbar" immediately instead of rendering the collage first (M4 review notes)
-- [ ] **ACPT-01**: On a real Android 16 device, a user can create a collage from 1-9 images and save it to the gallery, and the saved image appears in the gallery app (v1 success metric)
+- [x] **ACPT-01**: On a real Android 16 device, a user can create a collage from 1-9 images and save it to the gallery, and the saved image appears in the gallery app (v1 success metric)
 
 ## Post-v1 Requirements (committed, Phase 8)
 
@@ -131,20 +131,20 @@ Which phases cover which requirements. Phase N corresponds to `docs/PLAN.md` mil
 | EXPT-02 | Phase 4 | Complete |
 | EXPT-03 | Phase 4 | Complete |
 | EXPT-04 | Phase 4 | Complete |
-| ANDR-01 | Phase 5 | Pending |
-| ANDR-02 | Phase 5 | Pending |
-| ANDR-03 | Phase 5 | Pending |
-| ANDR-04 | Phase 5 | Pending |
-| ANDR-05 | Phase 5 | Pending |
-| ANDR-06 | Phase 5 | Pending |
-| ANDR-07 | Phase 5 | Pending |
-| ANDR-08 | Phase 5 | Pending |
-| LIFE-01 | Phase 6 | Pending |
-| PERF-01 | Phase 6 | Pending |
-| ERRM-01 | Phase 6 | Pending |
-| POLI-01 | Phase 6 | Pending |
+| ANDR-01 | Phase 5 | Complete |
+| ANDR-02 | Phase 5 | Complete |
+| ANDR-03 | Phase 5 | Complete |
+| ANDR-04 | Phase 5 | Complete |
+| ANDR-05 | Phase 5 | Complete |
+| ANDR-06 | Phase 5 | Complete |
+| ANDR-07 | Phase 5 | Complete |
+| ANDR-08 | Phase 5 | Complete |
+| LIFE-01 | Phase 6 | Complete |
+| PERF-01 | Phase 6 | Complete |
+| ERRM-01 | Phase 6 | Complete |
+| POLI-01 | Phase 6 | Complete |
 | POLI-02 | Phase 6 | Complete |
-| ACPT-01 | Phase 6 | Pending |
+| ACPT-01 | Phase 6 | Complete |
 | ENV-03 | Phase 7 | Pending |
 | MANY-01 | Phase 8 | Pending |
 | MANY-02 | Phase 8 | Pending |

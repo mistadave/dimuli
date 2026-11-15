@@ -36,7 +36,7 @@ Both fixes only change log text and borrow order; no emulator-verified behaviour
 - Android clippy (`cargo ndk -t x86_64 --platform 33`): clean
 - `android/gradlew -p android assembleDebug` (both ABIs) + `check-apk.sh`: `APK CHECK OK`
 - `smoke.sh -s emulator-5554` (dimuli_api36): `SMOKE OK emulator-5554` (`android/build/smoke/p6-07-smoke-5554.txt`)
-- Device 8200fcc9 not attached: no device smoke
+- Device 8200fcc9 (OnePlus 9 Pro, Android 14), attached after the commit: arm64-only APK installed, `SMOKE OK 8200fcc9` (`android/build/smoke/p6-07-device-8200fcc9-smoke.txt`); both-ABI APK rebuilt afterwards, `APK CHECK OK`. usbipd dropped the connection on large transfers several times before the install succeeded.
 
 ## Doc changes
 

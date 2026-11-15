@@ -18,8 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Workspace and Layout Engine** - Cargo workspace and `collage-core`: templates, geometry, divider dragging, cover transform, swapping (completed 2026-11-13)
 - [x] **Phase 3: Desktop Editor** - Slint UI with desktop preview: loading, editor, dividers, pan/zoom, swap, settings (completed 2026-11-13)
 - [x] **Phase 4: Export Renderer** - JPEG export in `collage-core` with pixel test; desktop save to file (completed 2026-11-13)
-- [ ] **Phase 5: Android Shell** - Gradle project, Kotlin activity, JNI bridge, Photo Picker, MediaStore, sharing; running in the emulator and on a device
-- [ ] **Phase 6: Polish and v1 Acceptance** - Lifecycle, performance with large images, error messages, open review notes, real-device acceptance
+- [x] **Phase 5: Android Shell** - Gradle project, Kotlin activity, JNI bridge, Photo Picker, MediaStore, sharing; running in the emulator and on a device
+- [x] **Phase 6: Polish and v1 Acceptance** - Lifecycle, performance with large images, error messages, open review notes, real-device acceptance
 - [ ] **Phase 7: Developer Docs for the Android Build** - Replace `cargo-apk` commands in `CLAUDE.md` with the `cargo ndk` + Gradle flow
 - [ ] **Phase 8: More Than 9 Images** - Grid generator for any image count; lift `MAX_IMAGES`
 
@@ -78,7 +78,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. With fingers on the touchscreen, user can drag dividers, pinch-zoom and pan an image, swap images by long-press, switch templates and change settings
   4. "Speichern" puts the collage into `Pictures/dimuli` without any permission prompt and it shows up in the gallery app (Google Photos); "Teilen" opens the system share sheet with the JPEG
   5. System bars never cover content (edge-to-edge also on Android 13/14), the back gesture asks for confirmation in the editor and returns to the start screen (and closes the app from there), and the native library passes the 16 KB alignment check (`zipalign -c -P 16`)
-**Plans**: 6/8 plans executed
+**Plans**: 8/8 plans executed
 
 Plans:
 - [x] 05-01-PLAN.md — Rust preparation: approved crates, lib name `dimuli`, Slint Android feature, scoped JNI lint exception, android_main + back-native skeleton; own inset path removed (D-13), Slint safe-area insets; host gates + cargo ndk build/clippy
@@ -87,8 +87,8 @@ Plans:
 - [x] 05-04-PLAN.md — Save (MediaStore Pictures/dimuli) and share (own ShareProvider + chooser, no success message)
 - [x] 05-05-PLAN.md — UI pass: landscape editor layout, settings chevron, readable Slint attribution, adaptive launcher icon
 - [x] 05-06-PLAN.md — Emulator gate: AVD dimuli_api33, 16 KB / permission check script, full flow matrix on API 33 and 37
-- [ ] 05-07-PLAN.md — Real devices Android 14 + 16: connect (owner), install + smoke, finger tests (owner)
-- [ ] 05-08-PLAN.md — Milestone close: code review + critical fixes, design docs updated, milestone 5 ticked
+- [x] 05-07-PLAN.md — Real devices Android 14 + 16: connect (owner), install + smoke, finger tests (owner)
+- [x] 05-08-PLAN.md — Milestone close: code review + critical fixes, design docs updated, milestone 5 ticked
 **UI hint**: yes
 
 ### Phase 6: Polish and v1 Acceptance
@@ -111,7 +111,7 @@ Plans:
 - [x] 06-05-PLAN.md — Lifecycle: restart notice (D-06, D-15), complete configChanges, review notes N1-N5, emulator pause/resume flows
 - [x] 06-06-PLAN.md — Emulator verification: 50/80 MP, rotated, HEIC/WebP/alpha matrix with peak memory (D-10), API 33/37 matrix, device smoke
 - [x] 06-07-PLAN.md — Code review + critical fixes, docs record limits and Phase 6 as built
-- [ ] 06-08-PLAN.md — Owner's final device test on Android 14 + 16 (ACPT-01 + deferred 05-07 checklist), device memory, milestones 5 and 6 ticked
+- [x] 06-08-PLAN.md — Owner's final device test on Android 14 + 16 (ACPT-01 + deferred 05-07 checklist), device memory, milestones 5 and 6 ticked
 **UI hint**: yes
 
 ### Phase 7: Developer Docs for the Android Build
@@ -146,7 +146,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Workspace and Layout Engine | n/a (pre-GSD) | Complete | 2026-11-13 |
 | 3. Desktop Editor | n/a (pre-GSD) | Complete | 2026-11-13 |
 | 4. Export Renderer | n/a (pre-GSD) | Complete | 2026-11-13 |
-| 5. Android Shell | 6/8 | In Progress | - |
-| 6. Polish and v1 Acceptance | 7/8 | In Progress | - |
+| 5. Android Shell | 8/8 | Complete | 2026-11-15 |
+| 6. Polish and v1 Acceptance | 8/8 | Complete | 2026-11-15 |
 | 7. Developer Docs for the Android Build | 0/TBD | Not started | - |
 | 8. More Than 9 Images | 0/TBD | Not started | - |

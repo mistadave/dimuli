@@ -90,9 +90,9 @@ Was daraus folgt:
 - [x] 2. **Workspace und collage-core** mit Unit-Tests: Baum, Vorlagen, Geometrie, Ziehen der Trennlinien, Cover-Transformation, Tauschen.
 - [x] 3. **Desktop-UI mit Slint:** Bilder laden, Editor, Trennlinien, Verschieben/Zoomen, Tauschen, Einstellungen.
 - [x] 4. **Export-Renderer** in collage-core mit Test (Pixelvergleich am Testbild); auf dem Desktop als Datei speichern.
-- [ ] 5. **Android-Schale:** Gradle-Projekt, Kotlin-Activity, JNI-Bridge, Photo Picker, MediaStore, Teilen; Lauf im Emulator
+- [x] 5. **Android-Schale:** Gradle-Projekt, Kotlin-Activity, JNI-Bridge, Photo Picker, MediaStore, Teilen; Lauf im Emulator
   (API 33, 36, 37; neues AVD `dimuli_api33`) und auf echten Geräten mit Android 14 und Android 16.
-- [ ] 6. **Feinschliff:** Lifecycle (Pause/Resume, Zustand halten), Performance mit großen Bildern, Fehlermeldungen in der UI.
+- [x] 6. **Feinschliff:** Lifecycle (Pause/Resume, Zustand halten), Performance mit großen Bildern, Fehlermeldungen in der UI.
     - Offene Review-Hinweise aus M3: Snapshot-Allokationen pro Zeigerereignis reduzieren (während einer Geste nur Zellen
       aktualisieren), mögliches 1-Frame-Flackern nach Formatwechsel, unnötige Pixelbuffer-Kopie beim Laden,
       `DECODE_MAX_PIXELS` für Geräte auf 64 MP gesenkt, zusätzlich `DECODE_MAX_ALLOC` 256 MiB.

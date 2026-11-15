@@ -1,20 +1,20 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 6
-current_phase_name: Polish and v1 Acceptance
-current_plan: 8
-status: executing
-stopped_at: Completed 06-07-PLAN.md (uncommitted)
+current_phase: 7
+current_phase_name: Developer Docs for the Android Build
+current_plan: 1
+status: ready_to_plan
+stopped_at: Completed 06-08-PLAN.md (phases 5 and 6 complete)
 last_updated: "2026-11-15T12:00:00.000Z"
 last_activity: 2026-11-15
-last_activity_desc: 06-07 — code review (0 critical, 2 warnings fixed), docs updated, all gates green
+last_activity_desc: 06-08 — owner approved device test (Android 16 emulator + Android 14 OnePlus); milestones 5 and 6 ticked
 state_head: ff11541208a5b6e669342453d41347f14e5b5d7b
 progress:
   total_phases: 8
-  completed_phases: 4
+  completed_phases: 6
   total_plans: 16
-  completed_plans: 15
-  percent: 94
+  completed_plans: 16
+  percent: 100
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-13)
 
 **Core value:** A user can turn a handful of photos into one well-arranged collage image and get it into their gallery in a few taps.
-**Current focus:** Phase 6 - Polish and v1 Acceptance
+**Current focus:** Phase 7 - Developer Docs for the Android Build
 
 ## Current Position
 
-Phase: 6 of 8 (Polish and v1 Acceptance)
-Current Plan: 8
-Total Plans in Phase: 8
-Plan: 8 of 8 in current phase
-Status: Executing Phase 6 (06-01..06-07 done, uncommitted; 06-08 is the owner device test); Phase 5 still awaiting final device test and owner commit
-Last activity: 2026-11-15 — 06-07 complete: review 0 critical, W1/W2 fixed, docs record limits; gates + API 36 smoke green. Uncommitted; final device test (06-08) open.
+Phase: 7 of 8 (Developer Docs for the Android Build)
+Current Plan: -
+Total Plans in Phase: TBD
+Plan: not planned yet
+Status: Phases 5 and 6 complete (v1 accepted by owner); Phase 7 ready to plan
+Last activity: 2026-11-15 — 06-08: owner approved final device test; Android 16 on emulator by owner decision (no real Android 16 device). Milestones 5 and 6 ticked.
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100% of planned plans
 
 ## Performance Metrics
 
@@ -90,12 +90,13 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-07: Owner decision — Android 16 device and touch checklist (Task 3, ANDR-08) deferred to a final device test on both devices after all work is done; Android 14 smoke + insets pass
 - [Phase 06]: 06-01: D-08/D-17/D-18 — DECODE_MAX_PIXELS 64 MP, DECODE_MAX_ALLOC 256 MiB (checked via total_bytes), edge > 16384 reported as ImageTooLarge; PERF-01/POLI-02 not marked complete (shared with later plans)
 - [Phase 06]: 06-02: D-11 success auto-hide after 3 s (Claude's discretion), success colour Theme.success #b9e4c3; D-13/D-18 separate too-large text; late loading/export results dropped (LIFE-01 result half); ERRM-01/LIFE-01 not marked complete (continue in 06-04/06-05/06-08)
+- [Phase 06]: 06-08: Owner accepted Android 16 emulator + real Android 14 (OnePlus 9 Pro) as v1 acceptance; peak memory 489 MiB (emulator, 9 images) / 579 MiB (OnePlus)
 - [Phase 06]: 06-03: Rust owns the canvas size (fit_canvas, canvas written with the cells in one apply) against the aspect flicker; gesture fast path for move/pinch/scroll with full-refresh fallback on message_seq/screen change; Platform::share_supported without default body (desktop false); POLI-02 marked complete, POLI-01 waits for the 06-08 device check, PERF-01 continues in 06-04/06-06/06-08
 - [Phase 05]: 05-06: A1 (back on API 33) and A2 (edge-to-edge on API 33) confirmed on dimuli_api33 without code change; check-apk.sh proves 16 KB alignment, no permissions, minSdk 33/targetSdk 37 on the full APK
 
 ### Pending Todos
 
-- Final device test (Android 14 + Android 16): 05-07 Task 2 on Android 16 and Task 3 (touch checklist incl. Pitfall 6) on both devices
+- None (real Android 16 hardware test optional, waived by owner for v1)
 
 ### Blockers/Concerns
 
@@ -117,5 +118,5 @@ Items acknowledged and deferred at milestone close, most recent first:
 ## Session Continuity
 
 Last session: 2026-11-14T20:37:00.000Z
-Stopped at: Completed 06-07-PLAN.md (uncommitted)
-Resume file: .planning/phases/06-polish-and-v1-acceptance/06-08-PLAN.md
+Stopped at: Completed 06-08-PLAN.md
+Resume file: none (next: /gsd-plan-phase 7)
