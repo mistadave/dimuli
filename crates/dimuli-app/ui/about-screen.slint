@@ -1,0 +1,116 @@
+import { AboutSlint, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+
+// Info screen. The AboutSlint widget is required by the Slint Royalty-free License and must stay reachable
+// from the top-level menu (the Info button of the start screen).
+export component AboutScreen inherits Rectangle {
+    // Presentation-only state: the license entry whose full text is shown (-1: none).
+    property <int> expanded: -1;
+
+    VerticalLayout {
+        Rectangle {
+            height: Theme.touch-target + 2 * Theme.spacing-s;
+            background: Theme.surface;
+            HorizontalLayout {
+                padding: Theme.spacing-s;
+                spacing: Theme.spacing-s;
+                AppButton {
+                    text: "‹ " + Texts.back;
+                    clicked => {
+                        Backend.back-requested();
+                    }
+                }
+                Rectangle { }
+            }
+        }
+
+        // The whole page scrolls as one, so the header does not eat the height of small screens.
+        // The cards are collapsed by default, so no virtualization is needed.
+        ScrollView {
+            VerticalLayout {
+                padding-left: Theme.spacing-m;
+                padding-right: Theme.spacing-m;
+                padding-top: Theme.spacing-m;
+                padding-bottom: Theme.spacing-m;
+                spacing: Theme.spacing-s;
+
+                Text {
+                    text: Texts.app-name;
+                    font-size: Theme.font-xl;
+                    font-weight: 700;
+                    color: Theme.on-surface;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: Texts.version + " " + Backend.app-version;
+                    font-size: Theme.font-s;
+                    color: Theme.on-surface-muted;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: Texts.license + ": " + Backend.app-license;
+                    font-size: Theme.font-s;
+                    color: Theme.on-surface-muted;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: Texts.about-description;
+                    wrap: word-wrap;
+                    font-size: Theme.font-m;
+                    color: Theme.on-surface-muted;
+                    horizontal-alignment: center;
+                }
+                AboutSlint {
+                    preferred-height: Theme.about-height;
+                }
+                Text {
+                    text: Texts.licenses-heading;
+                    font-size: Theme.font-l;
+                    font-weight: 700;
+                    color: Theme.on-surface;
+                }
+                Text {
+                    text: Texts.licenses-hint;
+                    wrap: word-wrap;
+                    font-size: Theme.font-s;
+                    color: Theme.on-surface-muted;
+                }
+                for entry[index] in Backend.licenses: Rectangle {
+                    background: Theme.surface;
+                    border-radius: Theme.radius-s;
+                    VerticalLayout {
+                        padding: Theme.spacing-m;
+                        spacing: Theme.spacing-s;
+                        Text {
+                            text: entry.name;
+                            wrap: word-wrap;
+                            font-size: Theme.font-m;
+                            font-weight: 700;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: entry.packages;
+                            wrap: word-wrap;
+                            font-size: Theme.font-s;
+                            color: Theme.on-surface-muted;
+                        }
+                        if root.expanded == index: Text {
+                            text: entry.text;
+                            wrap: word-wrap;
+                            font-size: Theme.font-s;
+                            color: Theme.on-surface;
+                        }
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.expanded = root.expanded == index ? -1 : index;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

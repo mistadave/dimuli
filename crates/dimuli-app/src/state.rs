@@ -20,6 +20,8 @@ const DRAG_SLOP_PX: f32 = 10.0;
 pub(crate) enum Screen {
     Start,
     Editor,
+    /// Info screen with version and open-source licenses; reached from the start screen.
+    About,
 }
 
 /// Severity of a [`Message`].
@@ -474,14 +476,28 @@ impl AppState {
 
     // --- navigation ---
 
-    /// The back button or system back gesture: closes the confirmation dialog if open, otherwise asks for
-    /// confirmation in the editor. On the start screen (also while loading) there is nothing to go back to.
+    /// Opens the info screen. Only from the start screen while nothing is busy; `false` (nothing changed)
+    /// otherwise.
+    pub(crate) fn open_about(&mut self) -> bool {
+        if self.busy.is_some() || self.screen != Screen::Start {
+            return false;
+        }
+        self.screen = Screen::About;
+        true
+    }
+
+    /// The back button or system back gesture: closes the confirmation dialog if open, returns from the info
+    /// screen, otherwise asks for confirmation in the editor. On the start screen (also while loading) there
+    /// is nothing to go back to.
     /// While exporting, back is swallowed: neither the app closes nor the collage is discarded mid-render.
     pub(crate) fn request_back(&mut self) -> BackOutcome {
         if self.busy == Some(Busy::Exporting) {
             BackOutcome::Handled
         } else if self.confirm_back {
             self.confirm_back = false;
+            BackOutcome::Handled
+        } else if self.screen == Screen::About {
+            self.screen = Screen::Start;
             BackOutcome::Handled
         } else if self.screen == Screen::Editor {
             self.confirm_back = true;
@@ -1250,6 +1266,38 @@ mod tests {
         assert!(state.collage.is_none());
         assert_eq!(state.images.len(), 0);
         assert!(!state.confirm_back);
+    }
+
+    #[test]
+    fn about_opens_from_start_and_back_returns_to_start_handled() {
+        let mut state = AppState::new();
+        assert!(state.open_about());
+        assert_eq!(state.screen, Screen::About);
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert_eq!(state.screen, Screen::Start);
+        assert!(!state.confirm_back);
+        // Back on the start screen is not handled again, so the app closes.
+        assert_eq!(state.request_back(), BackOutcome::NotHandled);
+    }
+
+    #[test]
+    fn about_cannot_be_opened_while_busy_or_from_the_editor() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        assert!(!state.open_about());
+        assert_eq!(state.screen, Screen::Start);
+
+        let mut state = editor(&[(10, 10)]);
+        assert!(!state.open_about());
+        assert_eq!(state.screen, Screen::Editor);
+    }
+
+    #[test]
+    fn about_cannot_start_picking_while_open() {
+        let mut state = AppState::new();
+        assert!(state.open_about());
+        assert!(!state.begin_picking());
+        assert!(state.busy.is_none());
     }
 
     #[test]

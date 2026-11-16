@@ -13,9 +13,11 @@ use collage_core::{
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::images::ImageStore;
+use crate::licenses;
 use crate::state::{AppState, Busy, Gesture, MessageKind};
 use crate::ui::{
-    AppWindow, Backend, CellView, DividerView, MessageStyle, Screen, TemplateRect, TemplateView,
+    AppWindow, Backend, CellView, DividerView, LicenseEntry, MessageStyle, Screen, TemplateRect,
+    TemplateView,
 };
 
 /// Gap used for template previews, relative to the preview size.
@@ -349,6 +351,8 @@ pub(crate) struct Models {
     divider_rows: RefCell<Vec<DividerView>>,
     /// `divider_rows` holds fresh data that `dividers` does not show yet.
     dividers_dirty: Cell<bool>,
+    /// Whether the license list of the info screen has been built.
+    licenses_loaded: Cell<bool>,
 }
 
 impl Models {
@@ -361,6 +365,7 @@ impl Models {
             cell_rows: RefCell::new(Vec::new()),
             divider_rows: RefCell::new(Vec::new()),
             dividers_dirty: Cell::new(false),
+            licenses_loaded: Cell::new(false),
         }
     }
 
@@ -370,6 +375,8 @@ impl Models {
         backend.set_cells(ModelRc::from(self.cells.clone()));
         backend.set_dividers(ModelRc::from(self.dividers.clone()));
         backend.set_templates(ModelRc::from(self.templates.clone()));
+        backend.set_app_version(env!("CARGO_PKG_VERSION").into());
+        backend.set_app_license(env!("CARGO_PKG_LICENSE").into());
         backend.set_max_spacing(MAX_SPACING);
         backend.set_max_padding(MAX_PADDING);
         backend.set_max_corner_radius(MAX_CORNER_RADIUS);
@@ -378,6 +385,24 @@ impl Models {
             .map(|&c| to_slint_color(c))
             .collect();
         backend.set_background_presets(ModelRc::new(VecModel::from(presets)));
+    }
+
+    /// Fills the license list of the info screen on first use: parsing about a hundred license texts is not
+    /// needed at every app start.
+    pub(crate) fn ensure_licenses(&self, window: &AppWindow) {
+        if self.licenses_loaded.replace(true) {
+            return;
+        }
+        let backend = window.global::<Backend>();
+        let licenses: Vec<LicenseEntry> = licenses::all()
+            .into_iter()
+            .map(|entry| LicenseEntry {
+                name: entry.name.into(),
+                packages: entry.packages.into(),
+                text: entry.text.into(),
+            })
+            .collect();
+        backend.set_licenses(ModelRc::new(VecModel::from(licenses)));
     }
 
     /// Builds the snapshot of `state`.
@@ -402,6 +427,7 @@ impl Models {
             screen: match state.screen {
                 crate::state::Screen::Start => Screen::Start,
                 crate::state::Screen::Editor => Screen::Editor,
+                crate::state::Screen::About => Screen::About,
             },
             busy: state.busy.is_some_and(Busy::is_visible),
             busy_text: state.busy.filter(|b| b.is_visible()).map_or("", Busy::text),

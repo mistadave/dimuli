@@ -117,7 +117,7 @@ Grund: `rfd` bräuchte unter WSL GTK3 bzw. ein xdg-Portal.
 
 ### Lizenz Slint
 dimuli nutzt Slint unter der **Slint Royalty-free License 2.0**. Bedingung: Die App zeigt eine Slint-Attribution
-(Widget `AboutSlint` oder „Made with Slint“-Badge), in dimuli auf dem Startbildschirm bzw. in „Über“.
+(Widget `AboutSlint` oder „Made with Slint“-Badge), in dimuli auf dem Info-Bildschirm (Button „Info“ auf dem Start).
 
 ## Verifikation
 - `cargo test -p collage-core`: Vorlagen, Geometrie (keine Überlappung, Abstände stimmen), Ziehgrenzen,

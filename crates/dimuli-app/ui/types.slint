@@ -1,5 +1,5 @@
 // Data types shared between Rust and the UI. Lengths are in logical pixels.
-export enum Screen { start, editor }
+export enum Screen { start, editor, about }
 
 // Look of the message banner.
 export enum MessageStyle { notice, error, success }
@@ -39,4 +39,11 @@ export struct TemplateRect {
 
 export struct TemplateView {
     rects: [TemplateRect],
+}
+
+// One license section of the info screen: a license text and the packages it applies to.
+export struct LicenseEntry {
+    name: string,
+    packages: string,
+    text: string,
 }

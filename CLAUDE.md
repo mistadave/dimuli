@@ -41,6 +41,8 @@ cargo run -p dimuli-app -- a.jpg b.png   # Desktop-Vorschau; Bilder als Argument
 cargo test --workspace            # alle Tests (Host)
 cargo clippy --all-targets -- -D warnings
 cargo fmt
+scripts/update-licenses.sh          # Lizenzliste (crates/dimuli-app/licenses/rust-crates.txt) neu erzeugen; braucht cargo-about
+scripts/update-licenses.sh --check  # schlägt fehl, wenn die eingecheckte Lizenzliste veraltet ist
 
 # Android-Lint bei Änderungen an Android-Code; `-A ...`: Fehlalarm bei `thread_local!` in controller.rs
 ANDROID_JAR=$ANDROID_HOME/platforms/android-37.0/android.jar cargo ndk -t x86_64 --platform 33 clippy -p dimuli-app --lib -- -D warnings -A clippy::missing_const_for_thread_local

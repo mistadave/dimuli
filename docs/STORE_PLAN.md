@@ -14,8 +14,8 @@ die offizielle Play-Console-Hilfe prüfen.
 | Build | nur Debug-APK, Debug-Schlüssel | Release-**AAB**, eigener Upload-Schlüssel |
 | Version | `versionCode 1`, `versionName 0.1.0` | jede Store-Version braucht einen höheren `versionCode` |
 | Icon | Platzhalter (Phase 5, D-03) | endgültiges Icon + 512×512-PNG |
-| Slint-Lizenz | Royalty-free 2.0, `AboutSlint` auf dem Startbildschirm | Attribution vorhanden; bleibt Pflicht |
-| Lizenz eigener Code | `Cargo.toml`: MIT OR Apache-2.0, aber keine `LICENSE`-Datei | festlegen, Dateien ergänzen |
+| Slint-Lizenz | Royalty-free 2.0, `AboutSlint` auf dem Info-Bildschirm (Button „Info“ auf dem Start) | Attribution vorhanden; bleibt Pflicht |
+| Lizenz eigener Code | Apache-2.0 (`LICENSE`, `Cargo.toml`), festgelegt am 16.11.2026 | erledigt |
 | Remote-Repo | keines | nötig nur, falls Quellcode/Datenschutzseite öffentlich sein sollen |
 
 ## Entscheidungen vorab (Besitzer)
@@ -52,10 +52,10 @@ die offizielle Play-Console-Hilfe prüfen.
 
 ### S3. App fertigstellen
 - Endgültiges Icon (adaptiv: Vorder- und Hintergrund) einsetzen, dazu 512×512-PNG für den Store.
-- Anzeige „Über“ bzw. Lizenzen: Slint-Attribution bleibt; Lizenzhinweise der Rust-Crates
-  (MIT/Apache u. a.) in der App oder auf einer verlinkten Seite. Mit `cargo about` oder `cargo deny` lässt sich
-  eine Liste erzeugen (neues Werkzeug, nur nach Rückfrage).
-- `LICENSE-MIT` / `LICENSE-APACHE` ergänzen oder die Lizenzangabe in `Cargo.toml` anpassen.
+- Anzeige „Über“ bzw. Lizenzen: **erledigt** (Stand: Info-Bildschirm vom Start aus mit `AboutSlint`, Version und allen
+  Lizenztexten; Rust-Crates per `scripts/update-licenses.sh` (`cargo-about`), Slint/Skia/Kotlin von Hand in
+  `crates/dimuli-app/licenses/`, siehe `docs/ARCHITECTURE.md`).
+- Erledigt (16.11.2026): eigener Code unter Apache-2.0 (`LICENSE`, `license = "Apache-2.0"` in `Cargo.toml`).
 - Abschließender Gerätetest auf API 33/34/36/37 (Emulator) und auf dem OnePlus; Speicher mit 36 Bildern.
 
 ### S4. Rechtliches und Formulare in der Play Console

@@ -1,4 +1,4 @@
-import { Screen, MessageStyle, CellView, DividerView, TemplateView } from "types.slint";
+import { Screen, MessageStyle, CellView, DividerView, TemplateView, LicenseEntry } from "types.slint";
 
 // The only interface between the UI and Rust: properties flow in, callbacks flow out.
 export global Backend {
@@ -9,6 +9,10 @@ export global Backend {
     in property <string> message-text;
     in property <MessageStyle> message-style: MessageStyle.notice;
     in property <bool> confirm-back-visible;
+    in property <string> app-version;
+    // SPDX identifier of the app's own license (from Cargo.toml).
+    in property <string> app-license;
+    in property <[LicenseEntry]> licenses;
 
     in property <[CellView]> cells;
     in property <[DividerView]> dividers;
@@ -31,6 +35,7 @@ export global Backend {
 
     // --- actions to Rust ---
     callback pick-images();
+    callback about-requested();
     callback back-requested();
     callback back-confirmed();
     callback back-cancelled();

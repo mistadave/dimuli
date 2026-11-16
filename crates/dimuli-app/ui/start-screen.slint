@@ -1,4 +1,3 @@
-import { AboutSlint } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Texts } from "texts.slint";
 import { Backend } from "backend.slint";
@@ -31,9 +30,11 @@ export component StartScreen inherits Rectangle {
                 Backend.pick-images();
             }
         }
-        // Attribution required by the Slint Royalty-free License.
-        AboutSlint {
-            preferred-height: Theme.about-height;
+        AppButton {
+            text: Texts.info;
+            clicked => {
+                Backend.about-requested();
+            }
         }
     }
 }

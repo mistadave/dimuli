@@ -111,6 +111,7 @@ pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -
 | `images.rs` | Laden im Hintergrund-Thread (Dekodieren über `collage_core::decode_unoriented`, danach Vorschau ≤ `preview_max_edge(n)` verkleinern und orientieren, mit nur einer Kopie des Pixelpuffers; Fehler sind `CoreError`); `ImageStore`: `ImageId → { path, preview: slint::Image, preview_size }`, `sources(&Collage)` liefert die `ImageSource`s für den Export |
 | `controller.rs` | Dünn: verbindet UI-Callbacks und `PlatformEvent`s mit `AppState`-Übergängen und stößt danach `refresh` an; `post()` bringt Aktionen aus anderen Threads in den UI-Thread (Controller per `thread_local` auffindbar); `update_gesture` aktualisiert bei Gesten nur die betroffenen Zeilen; ein `Timer` blendet Erfolgsmeldungen aus |
 | `view.rs` | Reine Umrechnung Collage-Einheiten ↔ Pixel (1.0 = Canvas-Breite in px), `source-clip-*`, Trennlinien-Touchflächen (≥ 48 px), Wheel-Zoom; `fit_canvas` (größte Canvas mit Collage-Format in der verfügbaren Fläche, ungültige Werte ergeben 0); Gesten-Schnellpfad (bei geänderter Meldung oder anderem Bildschirm voller Refresh); `Models::snapshot/apply` schreibt `CellView`/`DividerView`/`TemplateView` in die Slint-Models (nur geänderte Zeilen) |
+| `licenses.rs` | Lizenzhinweise der Info-Seite: bettet `licenses/rust-crates.txt` (generiert) und `licenses/other-components.txt` (von Hand) per `include_str!` ein und parst sie (`parse`, panikfrei) zu `LicenseEntry { name, packages, text }`; `Models::attach` übergibt sie als Modell an `Backend.licenses`, zusammen mit `CARGO_PKG_VERSION` |
 | `texts.rs` | Vom Rust-Code erzeugte deutsche Meldungen (Texte der `.slint`-Dateien: `ui/texts.slint`) |
 | `ui/` | `app.slint` (Einstieg), `backend.slint` (`global Backend`: alle Properties/Callbacks zwischen UI und Rust), `theme.slint`, `texts.slint`, `types.slint` (Structs), je eine Komponente pro Datei |
 | `platform/mod.rs` | `trait Platform`, `enum PlatformEvent`, `post_event()` |
@@ -185,9 +186,24 @@ bewusst hingenommen, D-07): dort funktionieren Pinch-Zoom und das Ablegen beim T
 
 ### Bildschirme
 
-1. **Start:** Button „Bilder wählen“.
-2. **Editor:** Canvas, darunter Vorlagenleiste; Einstellungen (Format, Abstand, Radius, Farbe) als ausklappbares Panel;
+1. **Start:** Button „Bilder wählen“ und Button „Info“.
+2. **Info (`Screen::About`):** Zurück-Leiste, App-Name und Version, Kurzbeschreibung, das `AboutSlint`-Widget
+   (Pflicht der Slint-Lizenz: erreichbar aus dem Hauptmenü), Überschrift „Open-Source-Lizenzen“ und die
+   Lizenzkarten; alles unter der festen Zurück-Leiste scrollt als eine `ScrollView` (Tippen klappt den vollen Text auf; welcher Eintrag offen ist, ist reiner UI-Zustand in
+   `about-screen.slint`). Erreichbar nur vom Startbildschirm ohne laufende Arbeit (`AppState::open_about`);
+   Zurück (Button und Geste) führt zum Start und ist `Handled`, die App schließt sich dabei nicht.
+3. **Editor:** Canvas, darunter Vorlagenleiste; Einstellungen (Format, Abstand, Radius, Farbe) als ausklappbares Panel;
    Aktionen „Speichern“ und „Teilen“ in der oberen Leiste.
+
+Lizenzdateien (`crates/dimuli-app/licenses/`, Format: je Lizenztext ein Abschnitt aus den Zeilen `@@@@ LICENSE <Name>`,
+`@@@@ PACKAGES <a 1.0, b 2.0>`, `@@@@ TEXT` und dem vollen Text):
+- `rust-crates.txt` wird mit `scripts/update-licenses.sh` aus `about.toml` und `about.hbs` per `cargo-about` erzeugt
+  (nur Android-Ziele, ohne Build-/Dev-Abhängigkeiten) und eingecheckt; `--check` schlägt fehl, wenn die Datei veraltet ist.
+  `cargo-about` ist nur ein Build-Werkzeug, keine Abhängigkeit der App.
+- `other-components.txt` ist von Hand gepflegt: Slint (`LicenseRef-Slint-Royalty-free-2.0`, von `cargo-about` nicht
+  lesbar), Skia samt der mitgelieferten Bibliotheken (FreeType, libjpeg-turbo, libpng, zlib, expat, Wuffs) und die
+  Kotlin-Bibliotheken (`kotlin-stdlib`, `annotations`). Bei Updates von Slint, `skia-bindings` oder Gradle-Abhängigkeiten anpassen
+  (das Skript warnt, wenn die Slint-Version nicht mehr passt).
 
 Export ist kein eigener Bildschirm, sondern ein Ladezustand (`busy`) über dem Editor.
 Zurück im Editor → Start (mit Rückfrage, da die Collage verloren geht).

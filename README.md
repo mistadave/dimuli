@@ -86,3 +86,8 @@ adb -s <SERIAL> logcat -s dimuli           # App-Logs
 
 Ohne `-s` nimmt `smoke.sh` das erste verbundene Gerät. Sind Emulator und Gerät gleichzeitig verbunden,
 die Seriennummer aus `adb devices` angeben.
+
+## Lizenz
+
+dimuli steht unter der [Apache License 2.0](LICENSE). Die Lizenzen der verwendeten Bibliotheken
+zeigt die App unter „Info“ an (`crates/dimuli-app/licenses/`).

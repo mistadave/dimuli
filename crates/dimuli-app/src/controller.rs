@@ -103,8 +103,16 @@ impl Controller {
         }
 
         on!(on_pick_images, |c| c.pick_images());
+        on!(on_about_requested, |c| {
+            if let Some(window) = c.window.upgrade() {
+                c.models.ensure_licenses(&window);
+            }
+            c.update(|s| {
+                s.open_about();
+            });
+        });
         on!(on_back_requested, |c| c.update(|s| {
-            // The in-app back button exists only in the editor, so the outcome does not matter.
+            // The in-app back button exists only in the editor and on the info screen; both are handled.
             s.request_back();
         }));
         on!(on_back_confirmed, |c| c.update(AppState::confirm_back));
