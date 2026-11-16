@@ -107,6 +107,7 @@ Was daraus folgt:
   (nur unsichtbare Eingabesperre); „Lädt…“ erst, wenn Kotlin die gewählten Bilder kopiert, und nur wenn Kopieren und
   Laden länger als 250 ms dauern. Lade-Punkt mittig zentriert. Standard-Abstand zwischen den Bildern 0
   (Außenrand unverändert 1 %).
+- [ ] 10. **Veröffentlichung im Google Play Store (optional):** eigener Plan in [`STORE_PLAN.md`](STORE_PLAN.md).
 
 ## Wichtige Abhängigkeiten
 `slint` (+ `slint-build`), `image`, `tiny-skia`, `jni`, `android_logger`, `log`, `thiserror`; nur auf dem Desktop: `env_logger`.
