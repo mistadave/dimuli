@@ -1,0 +1,18 @@
+import { Theme } from "theme.slint";
+import { AppButton } from "app-button.slint";
+
+// A row of buttons of which one is selected (format, export size, quality).
+export component ChoiceRow inherits HorizontalLayout {
+    in property <[string]> labels;
+    in property <int> selected: -1;
+    callback choose(int);
+
+    spacing: Theme.spacing-s;
+    for label[index] in root.labels: AppButton {
+        text: label;
+        primary: index == root.selected;
+        clicked => {
+            root.choose(index);
+        }
+    }
+}

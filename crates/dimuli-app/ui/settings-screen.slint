@@ -1,0 +1,158 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+import { BackBar } from "back-bar.slint";
+import { SliderRow } from "slider-row.slint";
+import { ChoiceRow } from "choice-row.slint";
+import { SwatchRow } from "swatch-row.slint";
+
+component Heading inherits Text {
+    font-size: Theme.font-l;
+    font-weight: 700;
+    color: Theme.on-surface;
+}
+
+component Label inherits Text {
+    font-size: Theme.font-s;
+    color: Theme.on-surface-muted;
+}
+
+// App defaults: apply to new collages and to every export. Sliders save on release, buttons at once.
+export component SettingsScreen inherits Rectangle {
+    // Presentation-only state: the reset button asks once before it acts.
+    property <bool> confirm-reset: false;
+
+    VerticalLayout {
+        BackBar {
+            title: Texts.settings;
+        }
+
+        ScrollView {
+            VerticalLayout {
+                padding: Theme.spacing-m;
+                spacing: Theme.spacing-s;
+
+                Heading {
+                    text: Texts.defaults-heading;
+                }
+                Label {
+                    text: Texts.format;
+                }
+                ChoiceRow {
+                    labels: Texts.aspect-labels;
+                    selected: Backend.default-aspect-index;
+                    choose(index) => {
+                        Backend.default-aspect-selected(index);
+                    }
+                }
+                SliderRow {
+                    label: Texts.spacing;
+                    value: Backend.default-spacing;
+                    maximum: Backend.max-spacing;
+                    changed(v) => {
+                        Backend.default-spacing-changed(v);
+                    }
+                    released => {
+                        Backend.settings-committed();
+                    }
+                }
+                SliderRow {
+                    label: Texts.padding;
+                    value: Backend.default-padding;
+                    maximum: Backend.max-padding;
+                    changed(v) => {
+                        Backend.default-padding-changed(v);
+                    }
+                    released => {
+                        Backend.settings-committed();
+                    }
+                }
+                SliderRow {
+                    label: Texts.corner-radius;
+                    value: Backend.default-corner-radius;
+                    maximum: Backend.max-corner-radius;
+                    changed(v) => {
+                        Backend.default-corner-radius-changed(v);
+                    }
+                    released => {
+                        Backend.settings-committed();
+                    }
+                }
+                Label {
+                    text: Texts.background;
+                }
+                SwatchRow {
+                    colors: Backend.background-presets;
+                    selected: Backend.default-background-index;
+                    choose(index) => {
+                        Backend.default-background-selected(index);
+                    }
+                }
+
+                Heading {
+                    text: Texts.export-heading;
+                }
+                Label {
+                    text: Texts.export-size;
+                }
+                ChoiceRow {
+                    labels: Texts.export-size-labels;
+                    selected: Backend.export-size-index;
+                    choose(index) => {
+                        Backend.export-size-selected(index);
+                    }
+                }
+                Label {
+                    text: Texts.export-quality;
+                }
+                ChoiceRow {
+                    labels: Texts.export-quality-labels;
+                    selected: Backend.export-quality-index;
+                    choose(index) => {
+                        Backend.export-quality-selected(index);
+                    }
+                }
+
+                if !root.confirm-reset: AppButton {
+                    text: Texts.reset-defaults;
+                    clicked => {
+                        root.confirm-reset = true;
+                    }
+                }
+                if root.confirm-reset: VerticalLayout {
+                    spacing: Theme.spacing-s;
+                    Label {
+                        text: Texts.reset-question;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.spacing-s;
+                        AppButton {
+                            text: Texts.back-cancel;
+                            clicked => {
+                                root.confirm-reset = false;
+                            }
+                        }
+                        AppButton {
+                            text: Texts.reset-confirm;
+                            primary: true;
+                            clicked => {
+                                root.confirm-reset = false;
+                                Backend.settings-reset();
+                            }
+                        }
+                    }
+                }
+
+                AppButton {
+                    text: Texts.info;
+                    clicked => {
+                        Backend.about-requested();
+                    }
+                }
+            }
+        }
+    }
+}

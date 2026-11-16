@@ -30,6 +30,9 @@ pub trait Platform {
     fn set_collage_open(&self, open: bool);
     /// Opens the system share dialog for a JPEG. Answers with [`PlatformEvent::Shared`].
     fn share(&self, jpeg: Vec<u8>);
+    /// A writable directory for this installation's settings, or `None` if there is none. Android: the
+    /// app-private internal storage (no permission, removed on uninstall); desktop: the user's config directory.
+    fn data_dir(&self) -> Option<PathBuf>;
     /// Closes the app, e.g. after a back gesture on the start screen that the app did not use.
     fn close_app(&self);
 }

@@ -1,5 +1,6 @@
 //! Desktop implementation used for development: images come from the command line.
 
+use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -56,6 +57,13 @@ impl Platform for DesktopPlatform {
         false
     }
 
+    fn data_dir(&self) -> Option<PathBuf> {
+        config_dir(
+            std::env::var_os("XDG_CONFIG_HOME"),
+            std::env::var_os("HOME"),
+        )
+    }
+
     fn restored_after_close(&self) -> bool {
         false
     }
@@ -67,6 +75,16 @@ impl Platform for DesktopPlatform {
             texts::SHARE_UNAVAILABLE.to_owned()
         )));
     }
+}
+
+/// `$XDG_CONFIG_HOME/dimuli`, else `$HOME/.config/dimuli`. Relative or empty values are ignored, as the
+/// XDG specification requires, so the settings never end up in the working directory.
+fn config_dir(xdg_config_home: Option<OsString>, home: Option<OsString>) -> Option<PathBuf> {
+    let absolute =
+        |value: Option<OsString>| value.map(PathBuf::from).filter(|path| path.is_absolute());
+    absolute(xdg_config_home)
+        .or_else(|| absolute(home).map(|home| home.join(".config")))
+        .map(|base| base.join("dimuli"))
 }
 
 /// Writes `jpeg` as `dimuli-<unix seconds>.jpg` into the working directory and logs the full path.
@@ -205,6 +223,29 @@ mod tests {
                 failed: 0
             }
         );
+    }
+
+    #[test]
+    fn config_dir_prefers_xdg_then_home_and_ignores_relative_paths() {
+        let os = |s: &str| Some(OsString::from(s));
+        assert_eq!(
+            config_dir(os("/x/cfg"), os("/home/u")),
+            Some(PathBuf::from("/x/cfg/dimuli"))
+        );
+        assert_eq!(
+            config_dir(None, os("/home/u")),
+            Some(PathBuf::from("/home/u/.config/dimuli"))
+        );
+        assert_eq!(
+            config_dir(os(""), os("/home/u")),
+            Some(PathBuf::from("/home/u/.config/dimuli"))
+        );
+        assert_eq!(
+            config_dir(os("rel"), os("/home/u")),
+            Some(PathBuf::from("/home/u/.config/dimuli"))
+        );
+        assert_eq!(config_dir(None, None), None);
+        assert_eq!(config_dir(None, os("home")), None);
     }
 
     #[test]

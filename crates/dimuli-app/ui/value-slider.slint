@@ -5,6 +5,8 @@ export component ValueSlider inherits Rectangle {
     in property <float> value;
     in property <float> maximum: 1.0;
     callback changed(float);
+    // The finger or mouse button was lifted: the drag is over.
+    callback released();
 
     min-height: Theme.touch-target;
 
@@ -46,6 +48,9 @@ export component ValueSlider inherits Rectangle {
         pointer-event(event) => {
             if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
                 self.emit-value();
+            }
+            if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                root.released();
             }
         }
         moved => {

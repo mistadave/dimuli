@@ -1,0 +1,31 @@
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+
+// Fixed top bar of the sub screens: back button and an optional title.
+export component BackBar inherits Rectangle {
+    in property <string> title;
+
+    height: Theme.touch-target + 2 * Theme.spacing-s;
+    background: Theme.surface;
+
+    HorizontalLayout {
+        padding: Theme.spacing-s;
+        spacing: Theme.spacing-s;
+        AppButton {
+            text: "‹ " + Texts.back;
+            clicked => {
+                Backend.back-requested();
+            }
+        }
+        Text {
+            text: root.title;
+            font-size: Theme.font-m;
+            font-weight: 700;
+            color: Theme.on-surface;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+}

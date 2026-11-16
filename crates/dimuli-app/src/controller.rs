@@ -10,11 +10,12 @@ use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use collage_core::{CoreError, ExportOptions, MAX_IMAGES, render};
+use collage_core::{CoreError, MAX_IMAGES, render};
 use slint::ComponentHandle;
 
 use crate::images;
 use crate::platform::{Platform, PlatformEvent};
+use crate::settings;
 use crate::state::{AppState, BackOutcome, Busy, ExportAction, ExportJob, Screen};
 use crate::ui::{AppWindow, Backend, Theme};
 use crate::view::Models;
@@ -82,6 +83,10 @@ impl Controller {
             let mut state = controller.state.borrow_mut();
             state.touch_target = touch_target;
             state.share_supported = share_supported;
+            state.settings = controller
+                .platform
+                .data_dir()
+                .map_or_else(settings::AppSettings::default, |dir| settings::load(&dir));
             if restored {
                 state.show_restart_notice();
             }
@@ -103,6 +108,9 @@ impl Controller {
         }
 
         on!(on_pick_images, |c| c.pick_images());
+        on!(on_settings_requested, |c| c.update(|s| {
+            s.open_settings();
+        }));
         on!(on_about_requested, |c| {
             if let Some(window) = c.window.upgrade() {
                 c.models.ensure_licenses(&window);
@@ -145,12 +153,71 @@ impl Controller {
             .update(|s| s.set_corner_radius(v)));
         on!(on_background_selected, |c, i| c
             .update(|s| s.select_background(i)));
+
+        on!(on_default_aspect_selected, |c, i| c
+            .change_settings(|s| s.set_default_aspect(i)));
+        on!(on_default_spacing_changed, |c, v| c
+            .edit_settings(|s| s.set_default_spacing(v)));
+        on!(on_default_padding_changed, |c, v| c
+            .edit_settings(|s| s.set_default_padding(v)));
+        on!(on_default_corner_radius_changed, |c, v| c
+            .edit_settings(|s| s.set_default_corner_radius(v)));
+        on!(on_default_background_selected, |c, i| c
+            .change_settings(|s| s.set_default_background(i)));
+        on!(on_export_size_selected, |c, i| c
+            .change_settings(|s| s.set_export_size(i)));
+        on!(on_export_quality_selected, |c, i| c
+            .change_settings(|s| s.set_export_quality(i)));
+        on!(on_settings_committed, |c| c.commit_settings());
+        on!(on_settings_reset, |c| c
+            .change_settings(AppState::reset_settings_to_factory));
     }
 
     /// Applies one state transition and refreshes the UI.
     fn update(&self, transition: impl FnOnce(&mut AppState)) {
         transition(&mut self.state.borrow_mut());
         self.refresh();
+    }
+
+    /// Applies a settings change from a button and saves it at once.
+    fn change_settings(&self, change: impl FnOnce(&mut AppState) -> bool) {
+        change(&mut self.state.borrow_mut());
+        self.save_pending_settings();
+        self.refresh();
+    }
+
+    /// Applies a settings change from a slider drag without saving: the save happens once on release
+    /// ([`Controller::commit_settings`]) or when the settings screen is left, not on every drag step.
+    fn edit_settings(&self, change: impl FnOnce(&mut AppState) -> bool) {
+        change(&mut self.state.borrow_mut());
+        self.refresh();
+    }
+
+    /// Saves pending slider edits (the slider was released).
+    fn commit_settings(&self) {
+        self.save_pending_settings();
+        self.refresh();
+    }
+
+    /// Saves the settings if they changed since the last save. Settings file IO runs in the UI thread on
+    /// purpose: the file is tiny and written only on a tap or a slider release.
+    fn save_pending_settings(&self) {
+        let (pending, settings) = {
+            let mut state = self.state.borrow_mut();
+            (state.take_unsaved_settings(), state.settings)
+        };
+        if !pending {
+            return;
+        }
+        let Some(dir) = self.platform.data_dir() else {
+            log::error!("no directory for the settings");
+            self.state.borrow_mut().settings_save_failed();
+            return;
+        };
+        if let Err(error) = settings::save(&dir, &settings) {
+            log::error!("cannot save settings to {}: {error}", dir.display());
+            self.state.borrow_mut().settings_save_failed();
+        }
     }
 
     /// Fast path for pan, pinch and wheel events: rewrites only the changed cell rows. Falls back to a full
@@ -174,6 +241,10 @@ impl Controller {
     }
 
     fn refresh(&self) {
+        // A slider may have missed its release (e.g. the screen changed mid-drag): save when leaving.
+        if self.state.borrow().unsaved_settings_after_leaving() {
+            self.save_pending_settings();
+        }
         let Some(window) = self.window.upgrade() else {
             return;
         };
@@ -331,7 +402,7 @@ impl Controller {
 /// Renders on the export thread. A panic (e.g. in a decoder) becomes an error, so the busy state always ends.
 fn render_job(job: &ExportJob) -> Result<Vec<u8>, CoreError> {
     std::panic::catch_unwind(AssertUnwindSafe(|| {
-        render(&job.collage, &job.sources, ExportOptions::default())
+        render(&job.collage, &job.sources, job.options)
     }))
     .unwrap_or_else(|_| Err(CoreError::Encode("renderer panicked".to_owned())))
 }

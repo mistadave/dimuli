@@ -7,6 +7,7 @@ mod controller;
 mod images;
 mod licenses;
 pub mod platform;
+mod settings;
 mod state;
 mod texts;
 mod view;

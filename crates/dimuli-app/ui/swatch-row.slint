@@ -1,0 +1,27 @@
+import { Theme } from "theme.slint";
+
+// Background colour swatches; shared by the editor panel and the settings screen.
+export component SwatchRow inherits HorizontalLayout {
+    in property <[color]> colors;
+    in property <int> selected: -1;
+    callback choose(int);
+
+    spacing: Theme.spacing-s;
+    for color[index] in root.colors: Rectangle {
+        width: Theme.touch-target;
+        height: Theme.touch-target;
+        Rectangle {
+            width: Theme.swatch;
+            height: Theme.swatch;
+            border-radius: self.width / 2;
+            background: color;
+            border-width: index == root.selected ? Theme.border-thick : Theme.border-thin;
+            border-color: index == root.selected ? Theme.primary : Theme.on-surface-muted;
+        }
+        TouchArea {
+            clicked => {
+                root.choose(index);
+            }
+        }
+    }
+}

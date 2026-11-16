@@ -108,6 +108,7 @@ Was daraus folgt:
   Laden länger als 250 ms dauern. Lade-Punkt mittig zentriert. Standard-Abstand zwischen den Bildern 0
   (Außenrand unverändert 1 %).
 - [ ] 10. **Veröffentlichung im Google Play Store (optional):** eigener Plan in [`STORE_PLAN.md`](STORE_PLAN.md).
+- [x] 11. **Einstellungen (Zahnrad):** App-Standardwerte (Format, Abstand, Rand, Ecken, Hintergrund, Export-Größe und -Qualität) auf eigenem Bildschirm vom Start aus (Zahnrad), pro Installation gespeichert (`settings.txt`); Info-Bildschirm jetzt über die Einstellungen.
 
 ## Wichtige Abhängigkeiten
 `slint` (+ `slint-build`), `image`, `tiny-skia`, `jni`, `android_logger`, `log`, `thiserror`; nur auf dem Desktop: `env_logger`.
@@ -117,7 +118,7 @@ Grund: `rfd` bräuchte unter WSL GTK3 bzw. ein xdg-Portal.
 
 ### Lizenz Slint
 dimuli nutzt Slint unter der **Slint Royalty-free License 2.0**. Bedingung: Die App zeigt eine Slint-Attribution
-(Widget `AboutSlint` oder „Made with Slint“-Badge), in dimuli auf dem Info-Bildschirm (Button „Info“ auf dem Start).
+(Widget `AboutSlint` oder „Made with Slint“-Badge), in dimuli auf dem Info-Bildschirm (Zahnrad auf dem Start → Einstellungen → Info).
 
 ## Verifikation
 - `cargo test -p collage-core`: Vorlagen, Geometrie (keine Überlappung, Abstände stimmen), Ziehgrenzen,

@@ -1,0 +1,44 @@
+import { Theme } from "theme.slint";
+
+// Gear icon button, drawn from shapes: the Android system font has no reliable gear glyph.
+export component GearButton inherits Rectangle {
+    callback clicked();
+
+    width: Theme.touch-target;
+    height: Theme.touch-target;
+
+    // Four strokes crossing the centre give eight teeth.
+    Path {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: Theme.gear-size;
+        height: Theme.gear-size;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 0 12 L 24 12 M 12 0 L 12 24 M 3.5 3.5 L 20.5 20.5 M 20.5 3.5 L 3.5 20.5";
+        stroke: area.pressed ? Theme.primary : Theme.on-surface;
+        stroke-width: Theme.gear-tooth-width;
+    }
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: Theme.gear-size * 2 / 3;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: area.pressed ? Theme.primary : Theme.on-surface;
+    }
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: Theme.gear-size / 3;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.background;
+    }
+
+    area := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}

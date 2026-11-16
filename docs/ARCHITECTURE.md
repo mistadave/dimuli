@@ -112,6 +112,7 @@ pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -
 | `controller.rs` | Dünn: verbindet UI-Callbacks und `PlatformEvent`s mit `AppState`-Übergängen und stößt danach `refresh` an; `post()` bringt Aktionen aus anderen Threads in den UI-Thread (Controller per `thread_local` auffindbar); `update_gesture` aktualisiert bei Gesten nur die betroffenen Zeilen; ein `Timer` blendet Erfolgsmeldungen aus |
 | `view.rs` | Reine Umrechnung Collage-Einheiten ↔ Pixel (1.0 = Canvas-Breite in px), `source-clip-*`, Trennlinien-Touchflächen (≥ 48 px), Wheel-Zoom; `fit_canvas` (größte Canvas mit Collage-Format in der verfügbaren Fläche, ungültige Werte ergeben 0); Gesten-Schnellpfad (bei geänderter Meldung oder anderem Bildschirm voller Refresh); `Models::snapshot/apply` schreibt `CellView`/`DividerView`/`TemplateView` in die Slint-Models (nur geänderte Zeilen) |
 | `licenses.rs` | Lizenzhinweise der Info-Seite: bettet `licenses/rust-crates.txt` (generiert) und `licenses/other-components.txt` (von Hand) per `include_str!` ein und parst sie (`parse`, panikfrei) zu `LicenseEntry { name, packages, text }`; `Models::attach` übergibt sie als Modell an `Backend.licenses`, zusammen mit `CARGO_PKG_VERSION` |
+| `settings.rs` | `AppSettings` (Standardwerte des Benutzers, `Default` = Werkseinstellung): Format, Abstand, Rand, Ecken, Hintergrund (Index in `BACKGROUND_PRESETS`), Export-Langkante (`EXPORT_SIZE_PRESETS` 2000/3000/4000/6000 px) und JPEG-Qualität (`JPEG_QUALITY_PRESETS` 85/90/95); Setter liefern „geändert“ (= Speichern nötig); `to_text`/`parse` (tolerant, nie Fehler); `load`/`save` (atomar: Temp-Datei + `rename`); Details siehe „Einstellungen“ unten |
 | `texts.rs` | Vom Rust-Code erzeugte deutsche Meldungen (Texte der `.slint`-Dateien: `ui/texts.slint`) |
 | `ui/` | `app.slint` (Einstieg), `backend.slint` (`global Backend`: alle Properties/Callbacks zwischen UI und Rust), `theme.slint`, `texts.slint`, `types.slint` (Structs), je eine Komponente pro Datei |
 | `platform/mod.rs` | `trait Platform`, `enum PlatformEvent`, `post_event()` |
@@ -129,6 +130,7 @@ pub trait Platform {
     fn restored_after_close(&self) -> bool;            // System hat den Prozess mit offener Collage beendet
     fn set_collage_open(&self, open: bool);            // für den Neustart-Merker
     fn share(&self, jpeg: Vec<u8>);                    // → PlatformEvent::Shared
+    fn data_dir(&self) -> Option<PathBuf>;             // beschreibbares Verzeichnis für die Einstellungen
     fn close_app(&self);                               // Zurück auf dem Startbildschirm beendet die App
 }
 
@@ -186,13 +188,19 @@ bewusst hingenommen, D-07): dort funktionieren Pinch-Zoom und das Ablegen beim T
 
 ### Bildschirme
 
-1. **Start:** Button „Bilder wählen“ und Button „Info“.
-2. **Info (`Screen::About`):** Zurück-Leiste, App-Name und Version, Kurzbeschreibung, das `AboutSlint`-Widget
-   (Pflicht der Slint-Lizenz: erreichbar aus dem Hauptmenü), Überschrift „Open-Source-Lizenzen“ und die
+1. **Start:** Button „Bilder wählen“ und oben rechts ein Zahnrad (aus Formen gezeichnet, `gear-button.slint`; 48 px Touch-Ziel).
+2. **Einstellungen (`Screen::Settings`):** feste Leiste (`back-bar.slint`: „‹ Zurück“, Titel), darunter eine `ScrollView`:
+   „Standard für neue Collagen“ (Format, Abstand/Rand/Ecken, Hintergrund), „Export“ (Größe, Qualität), Zurücksetzen
+   (einmalige Rückfrage, reiner UI-Zustand) und „Info“. Geteilte Komponenten mit dem Editor-Panel: `SliderRow`,
+   `ChoiceRow`, `SwatchRow`. Buttons speichern sofort; Schieberegler melden `settings-committed` erst beim Loslassen
+   (`ValueSlider.released`), der Controller (`edit_settings`/`commit_settings`) speichert dann einmal. Ausstehende Änderungen (`AppState.settings_unsaved`) werden auch beim Verlassen des Einstellungsbildschirms gespeichert (`refresh`), falls ein Loslassen nie ankam.
+   Erreichbar nur vom Start ohne laufende Arbeit (`AppState::open_settings`); Zurück → Start (`Handled`).
+3. **Info (`Screen::About`):** Zurück-Leiste, App-Name und Version, Kurzbeschreibung, das `AboutSlint`-Widget
+   (Pflicht der Slint-Lizenz: erreichbar über Start → Zahnrad → Einstellungen → Info), Überschrift „Open-Source-Lizenzen“ und die
    Lizenzkarten; alles unter der festen Zurück-Leiste scrollt als eine `ScrollView` (Tippen klappt den vollen Text auf; welcher Eintrag offen ist, ist reiner UI-Zustand in
-   `about-screen.slint`). Erreichbar nur vom Startbildschirm ohne laufende Arbeit (`AppState::open_about`);
-   Zurück (Button und Geste) führt zum Start und ist `Handled`, die App schließt sich dabei nicht.
-3. **Editor:** Canvas, darunter Vorlagenleiste; Einstellungen (Format, Abstand, Radius, Farbe) als ausklappbares Panel;
+   `about-screen.slint`). Erreichbar nur von den Einstellungen ohne laufende Arbeit (`AppState::open_about`);
+   Zurück (Button und Geste) führt zu den Einstellungen und ist `Handled`, die App schließt sich dabei nicht.
+4. **Editor:** Canvas, darunter Vorlagenleiste; Einstellungen (Format, Abstand, Radius, Farbe) als ausklappbares Panel;
    Aktionen „Speichern“ und „Teilen“ in der oberen Leiste.
 
 Lizenzdateien (`crates/dimuli-app/licenses/`, Format: je Lizenztext ein Abschnitt aus den Zeilen `@@@@ LICENSE <Name>`,
@@ -224,6 +232,40 @@ Thread `exporter`: `render()` (Panic wird per `catch_unwind` zum Fehler) → `po
 bei Erfolg `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shared` → Meldung (Teilen zeigt bei Erfolg keine Meldung, D-11); bei Fehler wird der `CoreError` geloggt und eine deutsche Meldung gezeigt
 (Quellbild fehlt/unlesbar vs. allgemein). Während des Exports schluckt das Overlay alle Eingaben und die Zurück-Geste ist `Handled` (ohne Wirkung).
 
+### Einstellungen (App-Standardwerte)
+
+`AppState.settings: AppSettings` gilt für **neue** Collagen (`finish_loading` setzt Format und Stil) und für **jeden
+Export** (`begin_export` kopiert Langkante und Qualität als `ExportJob.options`). Eine geöffnete Collage ändert sich
+nie durch geänderte Einstellungen; Änderungen sind während `busy` gesperrt.
+
+- **Speicherort** (`Platform::data_dir`, Datei `settings.txt`): Android `AndroidApp::internal_data_path()`
+  (app-privat, keine Berechtigung, bei Deinstallation gelöscht); Desktop `$XDG_CONFIG_HOME/dimuli`, sonst
+  `$HOME/.config/dimuli` (nur absolute Pfade). Laden einmalig beim Start (fehlend/unlesbar/zu groß → Werkseinstellung,
+  nur Log). Die Datei-IO läuft bewusst im UI-Thread (winzige Datei, nur bei Tippen oder Loslassen). Speichern atomar (`settings.txt.tmp` → `rename`); schlägt es fehl, Log + Meldung
+  `texts::SETTINGS_SAVE_FAILED`, die Werte gelten bis zum App-Ende weiter.
+- **Format** (Text, eine Zeile je Schlüssel, `version=1` muss die erste Zeile sein, sonst Werkseinstellung):
+
+  ```text
+  version=1
+  aspect=1:1            # 1:1 | 4:5 | 9:16 | 16:9
+  spacing=0             # Collage-Einheiten, 0..=MAX_SPACING
+  padding=0.01          # 0..=MAX_PADDING
+  corner_radius=0       # 0..=MAX_CORNER_RADIUS
+  background=0          # Index in BACKGROUND_PRESETS
+  export_long_edge=3000 # 2000 | 3000 | 4000 | 6000
+  jpeg_quality=90       # 85 | 90 | 95
+  ```
+
+  Unbekannte Schlüssel werden ignoriert; ungültige oder außerhalb des Bereichs liegende Werte fallen je Schlüssel
+  auf die Werkseinstellung zurück (kein Klemmen).
+- **Schnittstelle für die Einstellungsseite:** `AppState::set_default_aspect/_spacing/_padding/_corner_radius/
+  _background`, `set_export_size`, `set_export_quality` (Index bzw. Wert; Rückgabe `true` = gespeichert werden muss),
+  `reset_settings_to_factory`. Der Controller (`change_settings`) speichert danach über die Plattform. Backend:
+  Callbacks `default-aspect-selected`, `default-spacing-changed`, `default-padding-changed`,
+  `default-corner-radius-changed`, `default-background-selected`, `export-size-selected`,
+  `export-quality-selected`, `settings-reset` und Properties `default-*-index`/`default-spacing/-padding/-corner-radius`,
+  `export-size-index`, `export-quality-index`.
+
 ## Grenzen und Konstanten (v1)
 
 | Konstante | Wert | Grund |
@@ -239,7 +281,7 @@ bei Erfolg `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shar
 | `MIN_CELL_SIZE` | 0.05 | Feld wird beim Ziehen nicht schmaler als 5 % der Collage-Breite; in 16:9 mit vielen Bildern und maximalem Stil können Felder schon darunter starten, ihre Trennlinien bleiben dann stehen |
 | `MAX_SPACING` / `MAX_PADDING` / `MAX_CORNER_RADIUS` | 0.05 / 0.1 / 0.1 | Grenzen des gespeicherten Stils (Schieberegler); wirksam wird der Stil über `effective_style` |
 | `MAX_ZOOM` | 5.0 | Sinnvolle Obergrenze für Pinch-Zoom |
-| Export-Format | JPEG, Qualität 90 | Galerie- und Teilen-kompatibel |
+| Export-Format | JPEG, Qualität 90 (einstellbar 85/90/95), Langkante 3000 px (einstellbar 2000–6000) | Galerie- und Teilen-kompatibel |
 
 Überschreitet ein Bild eine der `DECODE_*`-Grenzen, sieht der Benutzer die Meldung „zu groß“ (nicht „unlesbar“).
 

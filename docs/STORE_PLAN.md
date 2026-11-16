@@ -14,7 +14,7 @@ die offizielle Play-Console-Hilfe prüfen.
 | Build | nur Debug-APK, Debug-Schlüssel | Release-**AAB**, eigener Upload-Schlüssel |
 | Version | `versionCode 1`, `versionName 0.1.0` | jede Store-Version braucht einen höheren `versionCode` |
 | Icon | Platzhalter (Phase 5, D-03) | endgültiges Icon + 512×512-PNG |
-| Slint-Lizenz | Royalty-free 2.0, `AboutSlint` auf dem Info-Bildschirm (Button „Info“ auf dem Start) | Attribution vorhanden; bleibt Pflicht |
+| Slint-Lizenz | Royalty-free 2.0, `AboutSlint` auf dem Info-Bildschirm (Zahnrad auf dem Start → Einstellungen → Info) | Attribution vorhanden; bleibt Pflicht |
 | Lizenz eigener Code | Apache-2.0 (`LICENSE`, `Cargo.toml`), festgelegt am 16.11.2026 | erledigt |
 | Remote-Repo | keines | nötig nur, falls Quellcode/Datenschutzseite öffentlich sein sollen |
 
@@ -52,7 +52,7 @@ die offizielle Play-Console-Hilfe prüfen.
 
 ### S3. App fertigstellen
 - Endgültiges Icon (adaptiv: Vorder- und Hintergrund) einsetzen, dazu 512×512-PNG für den Store.
-- Anzeige „Über“ bzw. Lizenzen: **erledigt** (Stand: Info-Bildschirm vom Start aus mit `AboutSlint`, Version und allen
+- Anzeige „Über“ bzw. Lizenzen: **erledigt** (Stand: Info-Bildschirm über Zahnrad → Einstellungen mit `AboutSlint`, Version und allen
   Lizenztexten; Rust-Crates per `scripts/update-licenses.sh` (`cargo-about`), Slint/Skia/Kotlin von Hand in
   `crates/dimuli-app/licenses/`, siehe `docs/ARCHITECTURE.md`).
 - Erledigt (16.11.2026): eigener Code unter Apache-2.0 (`LICENSE`, `license = "Apache-2.0"` in `Cargo.toml`).

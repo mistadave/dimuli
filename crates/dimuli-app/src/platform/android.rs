@@ -172,6 +172,10 @@ impl Platform for AndroidPlatform {
         }
     }
 
+    fn data_dir(&self) -> Option<std::path::PathBuf> {
+        self.app.internal_data_path()
+    }
+
     fn close_app(&self) {
         self.call_void(jni_str!("finish"));
     }

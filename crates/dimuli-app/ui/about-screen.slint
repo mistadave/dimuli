@@ -2,29 +2,17 @@ import { AboutSlint, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Texts } from "texts.slint";
 import { Backend } from "backend.slint";
-import { AppButton } from "app-button.slint";
+import { BackBar } from "back-bar.slint";
 
 // Info screen. The AboutSlint widget is required by the Slint Royalty-free License and must stay reachable
-// from the top-level menu (the Info button of the start screen).
+// from the top level (start screen, gear icon, settings, Info).
 export component AboutScreen inherits Rectangle {
     // Presentation-only state: the license entry whose full text is shown (-1: none).
     property <int> expanded: -1;
 
     VerticalLayout {
-        Rectangle {
-            height: Theme.touch-target + 2 * Theme.spacing-s;
-            background: Theme.surface;
-            HorizontalLayout {
-                padding: Theme.spacing-s;
-                spacing: Theme.spacing-s;
-                AppButton {
-                    text: "‹ " + Texts.back;
-                    clicked => {
-                        Backend.back-requested();
-                    }
-                }
-                Rectangle { }
-            }
+        BackBar {
+            title: Texts.info;
         }
 
         // The whole page scrolls as one, so the header does not eat the height of small screens.

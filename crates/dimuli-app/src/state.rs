@@ -4,11 +4,12 @@
 //! Rust without any window, so the behavior can be unit-tested.
 
 use collage_core::{
-    AspectRatio, CellId, CellTransform, Collage, CoreError, DividerId, ImageSource, MAX_IMAGES,
-    Size, Style, Template, Vec2, templates_for,
+    AspectRatio, CellId, CellTransform, Collage, CoreError, DividerId, ExportOptions, ImageSource,
+    MAX_IMAGES, Size, Style, Template, Vec2, templates_for,
 };
 
 use crate::images::{ImageStore, LoadedImage};
+use crate::settings::AppSettings;
 use crate::texts;
 use crate::view::{self, BACKGROUND_PRESETS, SwapHighlight};
 
@@ -20,7 +21,9 @@ const DRAG_SLOP_PX: f32 = 10.0;
 pub(crate) enum Screen {
     Start,
     Editor,
-    /// Info screen with version and open-source licenses; reached from the start screen.
+    /// App defaults; reached from the start screen (gear icon).
+    Settings,
+    /// Info screen with version and open-source licenses; reached from the settings screen.
     About,
 }
 
@@ -138,6 +141,8 @@ pub(crate) struct ExportJob {
     pub(crate) action: ExportAction,
     pub(crate) collage: Collage,
     pub(crate) sources: Vec<ImageSource>,
+    /// Size and quality from the settings at the moment the export started.
+    pub(crate) options: ExportOptions,
 }
 
 /// Everything the UI shows.
@@ -165,6 +170,10 @@ pub(crate) struct AppState {
     pub(crate) touch_target: f32,
     pub(crate) confirm_back: bool,
     pub(crate) gesture: Gesture,
+    /// User defaults for new collages and exports; an open collage keeps the values it was created with.
+    pub(crate) settings: AppSettings,
+    /// Settings changed since the last save (slider drags are saved on release or when leaving the screen).
+    settings_unsaved: bool,
 }
 
 impl AppState {
@@ -185,6 +194,8 @@ impl AppState {
             touch_target: 0.0,
             confirm_back: false,
             gesture: Gesture::Idle,
+            settings: AppSettings::default(),
+            settings_unsaved: false,
         }
     }
 
@@ -391,7 +402,9 @@ impl AppState {
             .ok_or(CoreError::NoImages)
             .and_then(|template| Collage::new(&metas, template));
         match collage {
-            Ok(collage) => {
+            Ok(mut collage) => {
+                collage.set_aspect(self.settings.aspect);
+                collage.set_style(self.settings.style());
                 log::info!("collage ready: {} images", collage.cells().len());
                 self.collage = Some(collage);
                 self.templates = templates;
@@ -445,6 +458,7 @@ impl AppState {
             action,
             collage,
             sources,
+            options: self.settings.export_options(),
         })
     }
 
@@ -476,10 +490,20 @@ impl AppState {
 
     // --- navigation ---
 
-    /// Opens the info screen. Only from the start screen while nothing is busy; `false` (nothing changed)
+    /// Opens the settings screen. Only from the start screen while nothing is busy; `false` (nothing changed)
+    /// otherwise.
+    pub(crate) fn open_settings(&mut self) -> bool {
+        if self.busy.is_some() || self.screen != Screen::Start {
+            return false;
+        }
+        self.screen = Screen::Settings;
+        true
+    }
+
+    /// Opens the info screen. Only from the settings screen while nothing is busy; `false` (nothing changed)
     /// otherwise.
     pub(crate) fn open_about(&mut self) -> bool {
-        if self.busy.is_some() || self.screen != Screen::Start {
+        if self.busy.is_some() || self.screen != Screen::Settings {
             return false;
         }
         self.screen = Screen::About;
@@ -487,8 +511,8 @@ impl AppState {
     }
 
     /// The back button or system back gesture: closes the confirmation dialog if open, returns from the info
-    /// screen, otherwise asks for confirmation in the editor. On the start screen (also while loading) there
-    /// is nothing to go back to.
+    /// screen to the settings and from there to the start screen, otherwise asks for confirmation in the
+    /// editor. On the start screen (also while loading) there is nothing to go back to.
     /// While exporting, back is swallowed: neither the app closes nor the collage is discarded mid-render.
     pub(crate) fn request_back(&mut self) -> BackOutcome {
         if self.busy == Some(Busy::Exporting) {
@@ -497,6 +521,9 @@ impl AppState {
             self.confirm_back = false;
             BackOutcome::Handled
         } else if self.screen == Screen::About {
+            self.screen = Screen::Settings;
+            BackOutcome::Handled
+        } else if self.screen == Screen::Settings {
             self.screen = Screen::Start;
             BackOutcome::Handled
         } else if self.screen == Screen::Editor {
@@ -841,6 +868,72 @@ impl AppState {
             return;
         }
         self.update_style(|s| s.corner_radius = value);
+    }
+
+    // --- settings (defaults for new collages and exports) ---
+    // Each method returns whether the settings changed and must be saved; none touches an open collage.
+
+    /// Runs `change` on the settings unless a background task runs; `true` if they changed.
+    fn change_settings(&mut self, change: impl FnOnce(&mut AppSettings) -> bool) -> bool {
+        let changed = self.busy.is_none() && change(&mut self.settings);
+        self.settings_unsaved |= changed;
+        changed
+    }
+
+    /// Whether changed settings still wait for a save; clears the flag, so the caller must save now.
+    pub(crate) fn take_unsaved_settings(&mut self) -> bool {
+        std::mem::take(&mut self.settings_unsaved)
+    }
+
+    /// Whether the settings need saving because the user left the settings screen (a slider may not have
+    /// reported its release).
+    pub(crate) fn unsaved_settings_after_leaving(&self) -> bool {
+        self.settings_unsaved && self.screen != Screen::Settings
+    }
+
+    /// Default format by index into [`AspectRatio::ALL`].
+    pub(crate) fn set_default_aspect(&mut self, index: i32) -> bool {
+        self.change_settings(|s| s.set_aspect_index(index))
+    }
+
+    /// Default spacing in collage units (clamped like the editor slider).
+    pub(crate) fn set_default_spacing(&mut self, value: f32) -> bool {
+        self.change_settings(|s| s.set_spacing(value))
+    }
+
+    /// Default padding in collage units (clamped like the editor slider).
+    pub(crate) fn set_default_padding(&mut self, value: f32) -> bool {
+        self.change_settings(|s| s.set_padding(value))
+    }
+
+    /// Default corner radius in collage units (clamped like the editor slider).
+    pub(crate) fn set_default_corner_radius(&mut self, value: f32) -> bool {
+        self.change_settings(|s| s.set_corner_radius(value))
+    }
+
+    /// Default background by index into [`BACKGROUND_PRESETS`].
+    pub(crate) fn set_default_background(&mut self, index: i32) -> bool {
+        self.change_settings(|s| s.set_background_index(index))
+    }
+
+    /// Export long edge by index into [`crate::settings::EXPORT_SIZE_PRESETS`].
+    pub(crate) fn set_export_size(&mut self, index: i32) -> bool {
+        self.change_settings(|s| s.set_export_size_index(index))
+    }
+
+    /// JPEG quality by index into [`crate::settings::JPEG_QUALITY_PRESETS`].
+    pub(crate) fn set_export_quality(&mut self, index: i32) -> bool {
+        self.change_settings(|s| s.set_jpeg_quality_index(index))
+    }
+
+    /// Restores all defaults to the factory values.
+    pub(crate) fn reset_settings_to_factory(&mut self) -> bool {
+        self.change_settings(AppSettings::reset)
+    }
+
+    /// Tells the user that the settings could not be stored (they still apply until the app closes).
+    pub(crate) fn settings_save_failed(&mut self) {
+        self.show_error(texts::SETTINGS_SAVE_FAILED);
     }
 
     pub(crate) fn select_background(&mut self, index: i32) {
@@ -1269,10 +1362,10 @@ mod tests {
     }
 
     #[test]
-    fn about_opens_from_start_and_back_returns_to_start_handled() {
+    fn settings_open_from_start_and_back_returns_to_start_handled() {
         let mut state = AppState::new();
-        assert!(state.open_about());
-        assert_eq!(state.screen, Screen::About);
+        assert!(state.open_settings());
+        assert_eq!(state.screen, Screen::Settings);
         assert_eq!(state.request_back(), BackOutcome::Handled);
         assert_eq!(state.screen, Screen::Start);
         assert!(!state.confirm_back);
@@ -1281,20 +1374,36 @@ mod tests {
     }
 
     #[test]
-    fn about_cannot_be_opened_while_busy_or_from_the_editor() {
+    fn about_is_reached_through_settings_and_back_returns_to_settings() {
+        let mut state = AppState::new();
+        assert!(!state.open_about());
+        assert!(state.open_settings());
+        assert!(state.open_about());
+        assert_eq!(state.screen, Screen::About);
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert_eq!(state.screen, Screen::Settings);
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert_eq!(state.screen, Screen::Start);
+    }
+
+    #[test]
+    fn settings_and_about_cannot_be_opened_while_busy_or_from_the_editor() {
         let mut state = AppState::new();
         assert!(state.begin_picking());
-        assert!(!state.open_about());
+        assert!(!state.open_settings());
         assert_eq!(state.screen, Screen::Start);
 
         let mut state = editor(&[(10, 10)]);
+        assert!(!state.open_settings());
         assert!(!state.open_about());
         assert_eq!(state.screen, Screen::Editor);
     }
 
     #[test]
-    fn about_cannot_start_picking_while_open() {
+    fn settings_and_about_cannot_start_picking_while_open() {
         let mut state = AppState::new();
+        assert!(state.open_settings());
+        assert!(!state.begin_picking());
         assert!(state.open_about());
         assert!(!state.begin_picking());
         assert!(state.busy.is_none());
@@ -2104,5 +2213,155 @@ mod tests {
             let job = state.begin_export(ExportAction::Save).unwrap();
             assert_eq!(job.sources.len(), count);
         }
+    }
+
+    // --- settings ---
+
+    fn state_with(settings: AppSettings) -> AppState {
+        let mut state = AppState::new();
+        state.settings = settings;
+        assert!(state.begin_loading());
+        state.finish_loading(vec![Ok(loaded(40, 30)), Ok(loaded(30, 40))], false, 0);
+        state
+    }
+
+    fn configured() -> AppSettings {
+        let mut s = AppSettings::default();
+        assert!(s.set_aspect_index(2));
+        assert!(s.set_spacing(0.02));
+        assert!(s.set_padding(0.05));
+        assert!(s.set_corner_radius(0.03));
+        assert!(s.set_background_index(1));
+        assert!(s.set_export_size_index(3));
+        assert!(s.set_jpeg_quality_index(2));
+        s
+    }
+
+    #[test]
+    fn new_collage_uses_factory_settings_by_default() {
+        let state = editor(&[(40, 30)]);
+        assert_eq!(collage(&state).aspect(), AspectRatio::default());
+        assert_eq!(collage(&state).style(), Style::default());
+    }
+
+    #[test]
+    fn new_collage_uses_the_stored_defaults() {
+        let state = state_with(configured());
+        assert_eq!(collage(&state).aspect(), AspectRatio::Story9x16);
+        let style = collage(&state).style();
+        assert!((style.spacing - 0.02).abs() < 1e-6);
+        assert!((style.padding - 0.05).abs() < 1e-6);
+        assert!((style.corner_radius - 0.03).abs() < 1e-6);
+        assert_eq!(style.background, BACKGROUND_PRESETS[1]);
+    }
+
+    #[test]
+    fn changing_defaults_does_not_touch_the_open_collage() {
+        let mut state = editor(&[(40, 30), (30, 40)]);
+        let before = (collage(&state).aspect(), collage(&state).style());
+        assert!(state.set_default_aspect(3));
+        assert!(state.set_default_spacing(0.04));
+        assert!(state.set_default_padding(0.08));
+        assert!(state.set_default_corner_radius(0.09));
+        assert!(state.set_default_background(2));
+        assert!(state.reset_settings_to_factory());
+        assert_eq!(before, (collage(&state).aspect(), collage(&state).style()));
+    }
+
+    #[test]
+    fn setting_methods_report_whether_a_save_is_needed() {
+        let mut state = AppState::new();
+        assert!(!state.set_default_aspect(0));
+        assert!(!state.set_default_aspect(9));
+        assert!(!state.set_default_spacing(0.0));
+        assert!(state.set_default_spacing(1.0));
+        assert!((state.settings.spacing - MAX_SPACING).abs() < 1e-6);
+        assert!(!state.set_default_background(-1));
+        assert!(!state.set_export_size(4));
+        assert!(!state.set_export_quality(3));
+        assert!(state.set_export_size(0));
+        assert!(state.set_export_quality(0));
+        assert!(state.reset_settings_to_factory());
+        assert!(!state.reset_settings_to_factory());
+        assert_eq!(state.settings, AppSettings::default());
+    }
+
+    #[test]
+    fn settings_cannot_change_while_busy() {
+        let mut state = editor(&[(40, 30)]);
+        state.begin_export(ExportAction::Save).unwrap();
+        assert!(!state.set_default_spacing(0.03));
+        assert!(!state.reset_settings_to_factory());
+        assert_eq!(state.settings, AppSettings::default());
+    }
+
+    #[test]
+    fn export_job_uses_the_configured_size_and_quality() {
+        let mut state = editor(&[(40, 30)]);
+        assert_eq!(
+            state.begin_export(ExportAction::Save).unwrap().options,
+            ExportOptions::default()
+        );
+        state.busy = None;
+        assert!(state.set_export_size(3));
+        assert!(state.set_export_quality(2));
+        let options = state.begin_export(ExportAction::Save).unwrap().options;
+        assert_eq!(options.long_edge, 6000);
+        assert_eq!(options.jpeg_quality, 95);
+    }
+
+    #[test]
+    fn failed_settings_save_shows_a_german_error() {
+        let mut state = AppState::new();
+        state.settings_save_failed();
+        let message = state.message.as_ref().unwrap();
+        assert_eq!(message.kind, MessageKind::Error);
+        assert_eq!(message.text, texts::SETTINGS_SAVE_FAILED);
+    }
+
+    #[test]
+    fn slider_edits_are_unsaved_until_taken() {
+        let mut state = AppState::new();
+        assert!(!state.take_unsaved_settings());
+        assert!(state.set_default_spacing(0.02));
+        assert!(state.take_unsaved_settings());
+        assert!(!state.take_unsaved_settings());
+        // An unchanged value is nothing to save.
+        assert!(!state.set_default_spacing(0.02));
+        assert!(!state.take_unsaved_settings());
+    }
+
+    #[test]
+    fn leaving_the_settings_screen_with_pending_edits_needs_a_save() {
+        let mut state = AppState::new();
+        assert!(state.open_settings());
+        assert!(state.set_default_padding(0.05));
+        assert!(!state.unsaved_settings_after_leaving());
+        assert!(state.open_about());
+        assert!(state.unsaved_settings_after_leaving());
+        state.request_back();
+        assert!(!state.unsaved_settings_after_leaving());
+        state.request_back();
+        assert!(state.unsaved_settings_after_leaving());
+        assert!(state.take_unsaved_settings());
+        assert!(!state.unsaved_settings_after_leaving());
+    }
+
+    #[test]
+    fn reset_leaves_one_pending_save_and_no_more() {
+        let mut state = AppState::new();
+        assert!(state.set_default_spacing(0.02));
+        assert!(state.reset_settings_to_factory());
+        assert!(state.take_unsaved_settings());
+        assert!(!state.take_unsaved_settings());
+        assert_eq!(state.settings, AppSettings::default());
+    }
+
+    #[test]
+    fn rejected_settings_changes_are_not_pending() {
+        let mut state = editor(&[(40, 30)]);
+        state.begin_export(ExportAction::Save).unwrap();
+        assert!(!state.set_default_spacing(0.03));
+        assert!(!state.take_unsaved_settings());
     }
 }

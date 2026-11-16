@@ -21,6 +21,8 @@ pub(crate) const SHARE_FAILED: &str =
     "Die Collage konnte nicht geteilt werden. Bitte versuche es noch einmal.";
 pub(crate) const SHARE_UNAVAILABLE: &str =
     "Teilen ist auf diesem Gerät nicht verfügbar. Speichere die Collage stattdessen.";
+pub(crate) const SETTINGS_SAVE_FAILED: &str = "Die Einstellungen konnten nicht gespeichert werden. \
+     Sie gelten nur, bis die App geschlossen wird.";
 pub(crate) const SAVED: &str = "Collage gespeichert.";
 
 /// Notice after some of the chosen files could not be read.
@@ -83,6 +85,7 @@ mod tests {
             GENERIC_ERROR.to_owned(),
             EXPORT_SOURCE_UNREADABLE.to_owned(),
             SAVE_FAILED.to_owned(),
+            SETTINGS_SAVE_FAILED.to_owned(),
             PICK_FAILED.to_owned(),
             SHARE_FAILED.to_owned(),
             SHARE_UNAVAILABLE.to_owned(),

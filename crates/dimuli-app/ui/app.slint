@@ -3,6 +3,7 @@ import { Theme } from "theme.slint";
 import { Backend } from "backend.slint";
 import { Screen } from "types.slint";
 import { StartScreen } from "start-screen.slint";
+import { SettingsScreen } from "settings-screen.slint";
 import { AboutScreen } from "about-screen.slint";
 import { EditorScreen } from "editor-screen.slint";
 import { MessageBanner } from "message-banner.slint";
@@ -33,6 +34,7 @@ export component AppWindow inherits Window {
 
         if Backend.screen == Screen.start: StartScreen { }
         if Backend.screen == Screen.editor: EditorScreen { }
+        if Backend.screen == Screen.settings: SettingsScreen { }
         if Backend.screen == Screen.about: AboutScreen { }
 
         MessageBanner {

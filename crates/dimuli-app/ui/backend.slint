@@ -35,6 +35,7 @@ export global Backend {
 
     // --- actions to Rust ---
     callback pick-images();
+    callback settings-requested();
     callback about-requested();
     callback back-requested();
     callback back-confirmed();
@@ -62,4 +63,25 @@ export global Backend {
     callback padding-changed(float);
     callback corner-radius-changed(float);
     callback background-selected(int);
+
+    // Current app defaults (indices into the preset lists; -1 = none).
+    in property <int> default-aspect-index: -1;
+    in property <float> default-spacing;
+    in property <float> default-padding;
+    in property <float> default-corner-radius;
+    in property <int> default-background-index: -1;
+    in property <int> export-size-index: -1;
+    in property <int> export-quality-index: -1;
+
+    // App defaults (Part B adds the settings screen).
+    callback default-aspect-selected(int);
+    callback default-spacing-changed(float);
+    callback default-padding-changed(float);
+    callback default-corner-radius-changed(float);
+    callback default-background-selected(int);
+    callback export-size-selected(int);
+    callback export-quality-selected(int);
+    // Sent when a default slider is released: the value is saved once, not on every drag step.
+    callback settings-committed();
+    callback settings-reset();
 }

@@ -337,6 +337,18 @@ pub(crate) struct Snapshot {
     padding: f32,
     corner_radius: f32,
     background_index: i32,
+    default_aspect_index: i32,
+    default_spacing: f32,
+    default_padding: f32,
+    default_corner_radius: f32,
+    default_background_index: i32,
+    export_size_index: i32,
+    export_quality_index: i32,
+}
+
+/// Slint index of an optional list position; `-1` (nothing selected) if absent.
+fn index_or_none(index: Option<usize>) -> i32 {
+    index.and_then(|i| i32::try_from(i).ok()).unwrap_or(-1)
 }
 
 /// The Slint models that are updated in place, plus what they currently show.
@@ -427,6 +439,7 @@ impl Models {
             screen: match state.screen {
                 crate::state::Screen::Start => Screen::Start,
                 crate::state::Screen::Editor => Screen::Editor,
+                crate::state::Screen::Settings => Screen::Settings,
                 crate::state::Screen::About => Screen::About,
             },
             busy: state.busy.is_some_and(Busy::is_visible),
@@ -464,6 +477,13 @@ impl Models {
                 .position(|&c| c == background)
                 .and_then(|i| i32::try_from(i).ok())
                 .unwrap_or(-1),
+            default_aspect_index: index_or_none(state.settings.aspect_index()),
+            default_spacing: state.settings.spacing,
+            default_padding: state.settings.padding,
+            default_corner_radius: state.settings.corner_radius,
+            default_background_index: index_or_none(Some(state.settings.background_index())),
+            export_size_index: index_or_none(state.settings.export_size_index()),
+            export_quality_index: index_or_none(state.settings.jpeg_quality_index()),
         }
     }
 
@@ -525,6 +545,13 @@ impl Models {
         backend.set_padding(snapshot.padding);
         backend.set_corner_radius(snapshot.corner_radius);
         backend.set_background_index(snapshot.background_index);
+        backend.set_default_aspect_index(snapshot.default_aspect_index);
+        backend.set_default_spacing(snapshot.default_spacing);
+        backend.set_default_padding(snapshot.default_padding);
+        backend.set_default_corner_radius(snapshot.default_corner_radius);
+        backend.set_default_background_index(snapshot.default_background_index);
+        backend.set_export_size_index(snapshot.export_size_index);
+        backend.set_export_quality_index(snapshot.export_quality_index);
 
         // Canvas size and rows change in the same apply, so no frame mixes old cells with a new canvas.
         backend.set_canvas_width(snapshot.canvas_width);
