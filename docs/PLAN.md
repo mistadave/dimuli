@@ -93,11 +93,12 @@ Was daraus folgt:
 - [x] 5. **Android-Schale:** Gradle-Projekt, Kotlin-Activity, JNI-Bridge, Photo Picker, MediaStore, Teilen; Lauf im Emulator
   (API 33, 36, 37; neues AVD `dimuli_api33`) und auf echten Geräten mit Android 14 und Android 16.
 - [x] 6. **Feinschliff:** Lifecycle (Pause/Resume, Zustand halten), Performance mit großen Bildern, Fehlermeldungen in der UI.
-    - Offene Review-Hinweise aus M3: Snapshot-Allokationen pro Zeigerereignis reduzieren (während einer Geste nur Zellen
-      aktualisieren), mögliches 1-Frame-Flackern nach Formatwechsel, unnötige Pixelbuffer-Kopie beim Laden,
-      `DECODE_MAX_PIXELS` für Geräte auf 64 MP gesenkt, zusätzlich `DECODE_MAX_ALLOC` 256 MiB.
-    - Offene Review-Hinweise aus M4: einige Render-Tests nutzen Ausgabegrößen über 64 px; Desktop-„Teilen“
-      rendert erst voll und meldet dann „nicht verfügbar“.
+    - [x] Review-Hinweise aus M3: Snapshot-Allokationen pro Zeigerereignis reduziert (Gesten-Schnellpfad aktualisiert nur
+      geänderte Zeilen), kein 1-Frame-Flackern nach Formatwechsel (Leinwandgröße und Zeilen im selben Update),
+      Vorschau wird einmal direkt in den Pixelbuffer kopiert, `DECODE_MAX_PIXELS` für Geräte auf 64 MP gesenkt,
+      zusätzlich `DECODE_MAX_ALLOC` 256 MiB.
+    - [x] Review-Hinweise aus M4: Render-Tests nutzen Ausgabegrößen bis 64 px; Desktop-„Teilen“ meldet
+      „nicht verfügbar“, ohne vorher zu rendern.
 - [x] 7. **CLAUDE.md aktualisieren:** `cargo-apk`-Befehle durch den `cargo ndk` + Gradle-Ablauf ersetzen und die Struktur ergänzen.
 - [x] 8. **Mehr als 9 Bilder:** Raster-Generator in `templates`, der für jede Bildanzahl ein Layout erzeugt;
   `MAX_IMAGES` auf 36 angehoben (6x6; darüber verdecken die Trennlinien-Griffe zu viel der Felder). Speicher und Bedienbarkeit
