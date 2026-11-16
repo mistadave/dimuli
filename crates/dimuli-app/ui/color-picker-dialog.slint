@@ -1,0 +1,169 @@
+import { Theme } from "theme.slint";
+import { Texts } from "texts.slint";
+import { Backend } from "backend.slint";
+import { AppButton } from "app-button.slint";
+
+// Modal colour picker: saturation/value square, hue bar, old and new colour. Instantiated by app.slint only
+// while open, so it starts fresh with the current colour each time; nothing changes until "Übernehmen".
+export component ColorPickerDialog inherits Rectangle {
+    background: Theme.scrim;
+
+    // Hue in degrees (0..360), saturation and value (0..1).
+    property <float> hue: 0;
+    property <float> saturation: 0;
+    property <float> value: 1;
+    // Set once the user touches the square or the bar: an untouched dialog applies the original colour
+    // exactly, without an HSV round trip that could turn a preset into a near-identical custom colour.
+    property <bool> touched: false;
+    property <color> picked: root.touched ? Colors.hsv(root.hue, root.saturation, root.value, 1.0) : Backend.color-picker-color;
+    // Shorter on landscape phones so the buttons stay on screen.
+    property <length> square-height: max(Theme.picker-min-height, min(Theme.picker-height, root.height - Theme.picker-chrome));
+
+    init => {
+        root.hue = Backend.color-picker-color.to-hsv().hue;
+        root.saturation = Backend.color-picker-color.to-hsv().saturation;
+        root.value = Backend.color-picker-color.to-hsv().value;
+    }
+
+    TouchArea { }
+
+    Rectangle {
+        width: min(parent.width - 2 * Theme.spacing-l, Theme.dialog-max-width);
+        height: content.preferred-height;
+        background: Theme.surface;
+        border-radius: Theme.radius-m;
+
+        content := VerticalLayout {
+            padding: Theme.spacing-l;
+            spacing: Theme.spacing-m;
+            Text {
+                text: Texts.color-picker-title;
+                font-size: Theme.font-l;
+                color: Theme.on-surface;
+            }
+            // Saturation (left to right) and value (bottom to top).
+            square := Rectangle {
+                height: root.square-height;
+                background: @linear-gradient(90deg, #ffffff, Colors.hsv(root.hue, 1.0, 1.0, 1.0));
+                clip: true;
+                border-radius: Theme.radius-s;
+                Rectangle {
+                    background: @linear-gradient(180deg, #00000000, #000000);
+                }
+                Rectangle {
+                    // Inset by half a handle, so the handle stays fully visible at the corners.
+                    x: root.saturation * (parent.width - Theme.picker-marker);
+                    y: (1.0 - root.value) * (parent.height - Theme.picker-marker);
+                    width: Theme.picker-marker;
+                    height: Theme.picker-marker;
+                    border-radius: self.width / 2;
+                    border-width: Theme.border-medium;
+                    border-color: Theme.handle;
+                    background: root.picked;
+                }
+                square-touch := TouchArea {
+                    function pick() {
+                        root.touched = true;
+                        root.saturation = max(0.0, min(1.0, (self.mouse-x - Theme.picker-marker / 2) / (self.width - Theme.picker-marker)));
+                        root.value = 1.0 - max(0.0, min(1.0, (self.mouse-y - Theme.picker-marker / 2) / (self.height - Theme.picker-marker)));
+                    }
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                            self.pick();
+                        }
+                    }
+                    moved => {
+                        self.pick();
+                    }
+                }
+            }
+            hue-bar := Rectangle {
+                height: Theme.touch-target;
+                // The track is inset by half a thumb on both sides, so the thumb never leaves the touch area.
+                Rectangle {
+                    x: Theme.picker-marker / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width - Theme.picker-marker;
+                    height: Theme.picker-bar;
+                    border-radius: self.height / 2;
+                    background: @linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+                }
+                Rectangle {
+                    x: root.hue / 360.0 * (parent.width - Theme.picker-marker);
+                    y: (parent.height - self.height) / 2;
+                    width: Theme.picker-marker;
+                    height: Theme.picker-marker;
+                    border-radius: self.width / 2;
+                    border-width: Theme.border-medium;
+                    border-color: Theme.handle;
+                    background: Colors.hsv(root.hue, 1.0, 1.0, 1.0);
+                }
+                hue-touch := TouchArea {
+                    function pick() {
+                        root.touched = true;
+                        root.hue = max(0.0, min(1.0, (self.mouse-x - Theme.picker-marker / 2) / (self.width - Theme.picker-marker))) * 360.0;
+                    }
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                            self.pick();
+                        }
+                    }
+                    moved => {
+                        self.pick();
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: Theme.spacing-m;
+                alignment: start;
+                Text {
+                    text: Texts.color-old;
+                    font-size: Theme.font-s;
+                    color: Theme.on-surface-muted;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    width: Theme.touch-target;
+                    height: Theme.swatch;
+                    border-radius: Theme.radius-s;
+                    background: Backend.color-picker-color;
+                    border-width: Theme.border-thin;
+                    border-color: Theme.on-surface-muted;
+                }
+                Text {
+                    text: Texts.color-new;
+                    font-size: Theme.font-s;
+                    color: Theme.on-surface-muted;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    width: Theme.touch-target;
+                    height: Theme.swatch;
+                    border-radius: Theme.radius-s;
+                    background: root.picked;
+                    border-width: Theme.border-thin;
+                    border-color: Theme.on-surface-muted;
+                }
+            }
+            HorizontalLayout {
+                spacing: Theme.spacing-s;
+                alignment: end;
+                AppButton {
+                    compact: true;
+                    text: Texts.back-cancel;
+                    clicked => {
+                        Backend.color-picker-cancelled();
+                    }
+                }
+                AppButton {
+                    compact: true;
+                    text: Texts.apply;
+                    primary: true;
+                    clicked => {
+                        Backend.color-picker-applied(root.picked);
+                    }
+                }
+            }
+        }
+    }
+}

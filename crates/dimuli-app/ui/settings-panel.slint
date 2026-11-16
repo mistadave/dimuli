@@ -57,8 +57,13 @@ export component SettingsPanel inherits Rectangle {
         SwatchRow {
             colors: Backend.background-presets;
             selected: Backend.background-index;
+            custom-index: Backend.custom-background-index;
+            current: Backend.collage-background;
             choose(index) => {
                 Backend.background-selected(index);
+            }
+            custom-requested => {
+                Backend.color-picker-requested();
             }
         }
     }

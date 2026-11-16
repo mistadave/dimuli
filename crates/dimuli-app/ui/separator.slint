@@ -1,0 +1,7 @@
+import { Theme } from "theme.slint";
+
+// Thin horizontal line between setting groups; the vertical space around it comes from the parent layout.
+export component Separator inherits Rectangle {
+    height: Theme.border-thin;
+    background: Theme.divider;
+}

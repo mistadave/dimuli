@@ -4,6 +4,9 @@ export component AppButton inherits Rectangle {
     in property <string> text;
     in property <bool> primary: false;
     in property <bool> enabled: true;
+    // Less horizontal text padding for narrow buttons in a row (the height stays a touch target).
+    in property <bool> compact: false;
+    property <length> text-padding: root.compact ? Theme.spacing-xs : Theme.spacing-m;
     callback clicked();
 
     min-width: Theme.touch-target;
@@ -12,10 +15,12 @@ export component AppButton inherits Rectangle {
     background: !root.enabled ? Theme.surface : root.primary ? (area.pressed ? Theme.primary.darker(0.2) : Theme.primary) : (area.pressed ? Theme.surface-raised.brighter(0.2) : Theme.surface-raised);
 
     label := Text {
-        x: Theme.spacing-m;
-        width: parent.width - 2 * Theme.spacing-m;
+        x: root.text-padding;
+        width: parent.width - 2 * root.text-padding;
         height: parent.height;
         text: root.text;
+        // Too long labels end in an ellipsis instead of being cut off.
+        overflow: elide;
         font-size: Theme.font-m;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -30,5 +35,5 @@ export component AppButton inherits Rectangle {
     }
 
     // Wide enough for its label plus padding.
-    preferred-width: label.preferred-width + 2 * Theme.spacing-m;
+    preferred-width: label.preferred-width + 2 * root.text-padding;
 }

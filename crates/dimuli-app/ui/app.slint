@@ -9,6 +9,7 @@ import { EditorScreen } from "editor-screen.slint";
 import { MessageBanner } from "message-banner.slint";
 import { BusyOverlay } from "busy-overlay.slint";
 import { ConfirmDialog } from "confirm-dialog.slint";
+import { ColorPickerDialog } from "color-picker-dialog.slint";
 
 export { Backend, Screen, Theme }
 
@@ -45,5 +46,6 @@ export component AppWindow inherits Window {
         }
         BusyOverlay { }
         ConfirmDialog { }
+        if Backend.color-picker-visible: ColorPickerDialog { }
     }
 }

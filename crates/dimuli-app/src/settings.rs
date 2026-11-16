@@ -9,14 +9,22 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use collage_core::collage::{MAX_CORNER_RADIUS, MAX_PADDING, MAX_SPACING};
-use collage_core::{AspectRatio, EXPORT_LONG_EDGE, ExportOptions, Style};
+use collage_core::{AspectRatio, EXPORT_LONG_EDGE, ExportOptions, Rgba, Style};
 
 use crate::view::BACKGROUND_PRESETS;
 
 /// Selectable long edges of the exported image in pixels, in display order.
 pub(crate) const EXPORT_SIZE_PRESETS: [u32; 4] = [2000, EXPORT_LONG_EDGE, 4000, 6000];
 /// Selectable JPEG qualities, in display order.
-pub(crate) const JPEG_QUALITY_PRESETS: [u8; 3] = [85, 90, 95];
+pub(crate) const JPEG_QUALITY_PRESETS: [u8; 3] = [75, 85, 95];
+/// Lowest custom JPEG quality: a visibly poor but still usable result.
+pub(crate) const MIN_JPEG_QUALITY: u8 = 25;
+/// Highest JPEG quality.
+pub(crate) const MAX_JPEG_QUALITY: u8 = 100;
+/// Background index meaning "custom colour" (one past the presets).
+pub(crate) const CUSTOM_BACKGROUND_INDEX: usize = BACKGROUND_PRESETS.len();
+/// Quality index meaning "custom value" (one past the presets).
+pub(crate) const CUSTOM_QUALITY_INDEX: usize = JPEG_QUALITY_PRESETS.len();
 
 /// Name of the settings file inside the platform's data directory.
 const FILE_NAME: &str = "settings.txt";
@@ -36,7 +44,8 @@ pub(crate) struct AppSettings {
     pub(crate) spacing: f32,
     pub(crate) padding: f32,
     pub(crate) corner_radius: f32,
-    background: usize,
+    /// Opaque; a preset or a custom colour.
+    background: Rgba,
     long_edge: u32,
     jpeg_quality: u8,
 }
@@ -50,11 +59,7 @@ impl Default for AppSettings {
             spacing: style.spacing,
             padding: style.padding,
             corner_radius: style.corner_radius,
-            // The factory background (white) is the first preset.
-            background: BACKGROUND_PRESETS
-                .iter()
-                .position(|&color| color == style.background)
-                .unwrap_or(0),
+            background: style.background,
             long_edge: export.long_edge,
             jpeg_quality: export.jpeg_quality,
         }
@@ -75,9 +80,44 @@ fn aspect_name(aspect: AspectRatio) -> &'static str {
     match aspect {
         AspectRatio::Square => "1:1",
         AspectRatio::Portrait4x5 => "4:5",
+        AspectRatio::Portrait3x4 => "3:4",
+        AspectRatio::Portrait2x3 => "2:3",
         AspectRatio::Story9x16 => "9:16",
+        AspectRatio::Landscape4x3 => "4:3",
+        AspectRatio::Landscape3x2 => "3:2",
         AspectRatio::Landscape16x9 => "16:9",
     }
+}
+
+/// Index of `color` in [`BACKGROUND_PRESETS`], or [`CUSTOM_BACKGROUND_INDEX`] if it is no preset.
+pub(crate) fn preset_index(color: Rgba) -> usize {
+    BACKGROUND_PRESETS
+        .iter()
+        .position(|&preset| preset == color)
+        .unwrap_or(CUSTOM_BACKGROUND_INDEX)
+}
+
+/// File form of a background: the preset index, or `#RRGGBB` for any other colour.
+fn background_text(color: Rgba) -> String {
+    match preset_index(color) {
+        CUSTOM_BACKGROUND_INDEX => format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b),
+        index => index.to_string(),
+    }
+}
+
+/// Parses a preset index or `#RRGGBB`.
+fn parse_background(value: &str) -> Option<Rgba> {
+    if let Some(hex) = value.strip_prefix('#') {
+        // `from_str_radix` also accepts a leading `+`, so check the digits first.
+        if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        let channel = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok();
+        return Some(Rgba::new(channel(0)?, channel(2)?, channel(4)?, 255));
+    }
+    BACKGROUND_PRESETS
+        .get(value.parse::<usize>().ok()?)
+        .copied()
 }
 
 /// Parses a finite length in `0..=max`.
@@ -105,11 +145,9 @@ impl AppSettings {
         }
     }
 
-    fn background_color(&self) -> collage_core::Rgba {
-        BACKGROUND_PRESETS
-            .get(self.background)
-            .copied()
-            .unwrap_or(collage_core::Rgba::WHITE)
+    /// The default background colour (opaque).
+    pub(crate) fn background_color(&self) -> Rgba {
+        self.background
     }
 
     /// Index into [`AspectRatio::ALL`] (for the settings UI); `None` cannot happen for valid settings.
@@ -117,9 +155,9 @@ impl AppSettings {
         AspectRatio::ALL.iter().position(|&a| a == self.aspect)
     }
 
-    /// Index into [`BACKGROUND_PRESETS`].
+    /// Index into [`BACKGROUND_PRESETS`], or [`CUSTOM_BACKGROUND_INDEX`] for any other colour.
     pub(crate) fn background_index(&self) -> usize {
-        self.background
+        preset_index(self.background)
     }
 
     /// Index into [`EXPORT_SIZE_PRESETS`]; `None` cannot happen for valid settings.
@@ -129,11 +167,17 @@ impl AppSettings {
             .position(|&e| e == self.long_edge)
     }
 
-    /// Index into [`JPEG_QUALITY_PRESETS`]; `None` cannot happen for valid settings.
-    pub(crate) fn jpeg_quality_index(&self) -> Option<usize> {
+    /// Index into [`JPEG_QUALITY_PRESETS`], or [`CUSTOM_QUALITY_INDEX`] if the quality is no preset.
+    pub(crate) fn jpeg_quality_index(&self) -> usize {
         JPEG_QUALITY_PRESETS
             .iter()
             .position(|&q| q == self.jpeg_quality)
+            .unwrap_or(CUSTOM_QUALITY_INDEX)
+    }
+
+    /// The exact JPEG quality (1..=100).
+    pub(crate) fn jpeg_quality(&self) -> u8 {
+        self.jpeg_quality
     }
 
     // --- setters: each returns whether the value changed (and the settings must be saved) ---
@@ -173,9 +217,16 @@ impl AppSettings {
     /// Sets the background by index into [`BACKGROUND_PRESETS`]; invalid indices change nothing.
     pub(crate) fn set_background_index(&mut self, index: i32) -> bool {
         match usize::try_from(index) {
-            Ok(i) if i < BACKGROUND_PRESETS.len() => replace(&mut self.background, i),
-            _ => false,
+            Ok(i) => BACKGROUND_PRESETS
+                .get(i)
+                .is_some_and(|&color| replace(&mut self.background, color)),
+            Err(_) => false,
         }
+    }
+
+    /// Sets a custom (opaque) background colour.
+    pub(crate) fn set_background_color(&mut self, r: u8, g: u8, b: u8) -> bool {
+        replace(&mut self.background, Rgba::new(r, g, b, 255))
     }
 
     /// Sets the export size by index into [`EXPORT_SIZE_PRESETS`]; invalid indices change nothing.
@@ -186,12 +237,26 @@ impl AppSettings {
         value.is_some_and(|v| replace(&mut self.long_edge, v))
     }
 
-    /// Sets the JPEG quality by index into [`JPEG_QUALITY_PRESETS`]; invalid indices change nothing.
+    /// Sets the JPEG quality to a preset by index into [`JPEG_QUALITY_PRESETS`]; other indices (including
+    /// [`CUSTOM_QUALITY_INDEX`], which is a UI mode and not a value) change nothing.
     pub(crate) fn set_jpeg_quality_index(&mut self, index: i32) -> bool {
         let value = usize::try_from(index)
             .ok()
             .and_then(|i| JPEG_QUALITY_PRESETS.get(i).copied());
         value.is_some_and(|v| replace(&mut self.jpeg_quality, v))
+    }
+
+    /// Sets an exact JPEG quality, clamped to `MIN_JPEG_QUALITY..=MAX_JPEG_QUALITY`; the value is rounded.
+    /// NaN changes nothing.
+    pub(crate) fn set_jpeg_quality(&mut self, value: f32) -> bool {
+        if value.is_nan() {
+            return false;
+        }
+        let clamped = value
+            .round()
+            .clamp(f32::from(MIN_JPEG_QUALITY), f32::from(MAX_JPEG_QUALITY));
+        // The clamp keeps the value in the `u8` range, so the cast cannot truncate.
+        replace(&mut self.jpeg_quality, clamped as u8)
     }
 
     /// Back to the factory values; returns whether anything changed.
@@ -210,7 +275,7 @@ impl AppSettings {
             self.spacing,
             self.padding,
             self.corner_radius,
-            self.background,
+            background_text(self.background),
             self.long_edge,
             self.jpeg_quality,
         )
@@ -262,10 +327,8 @@ impl AppSettings {
                 }
             }
             "background" => {
-                if let Ok(i) = value.parse::<usize>()
-                    && i < BACKGROUND_PRESETS.len()
-                {
-                    self.background = i;
+                if let Some(color) = parse_background(value) {
+                    self.background = color;
                 }
             }
             "export_long_edge" => {
@@ -277,7 +340,7 @@ impl AppSettings {
             }
             "jpeg_quality" => {
                 if let Ok(v) = value.parse::<u8>()
-                    && JPEG_QUALITY_PRESETS.contains(&v)
+                    && (MIN_JPEG_QUALITY..=MAX_JPEG_QUALITY).contains(&v)
                 {
                     self.jpeg_quality = v;
                 }
@@ -363,7 +426,7 @@ mod tests {
             spacing: 0.0125,
             padding: 0.05,
             corner_radius: 0.07,
-            background: 4,
+            background: BACKGROUND_PRESETS[4],
             long_edge: 6000,
             jpeg_quality: 95,
         }
@@ -376,7 +439,7 @@ mod tests {
         assert_eq!(s.style(), Style::default());
         assert_eq!(s.export_options(), ExportOptions::default());
         assert_eq!(s.export_size_index(), Some(1));
-        assert_eq!(s.jpeg_quality_index(), Some(1));
+        assert_eq!(s.jpeg_quality_index(), 2);
         assert_eq!(s.background_index(), 0);
         assert_eq!(s.aspect_index(), Some(0));
     }
@@ -400,7 +463,7 @@ mod tests {
             let s = AppSettings { aspect, ..custom() };
             assert_eq!(AppSettings::parse(&s.to_text()), s);
         }
-        for background in 0..BACKGROUND_PRESETS.len() {
+        for background in BACKGROUND_PRESETS {
             let s = AppSettings {
                 background,
                 ..custom()
@@ -420,6 +483,90 @@ mod tests {
                 ..custom()
             };
             assert_eq!(AppSettings::parse(&s.to_text()), s);
+        }
+    }
+
+    #[test]
+    fn custom_quality_round_trips_and_out_of_range_falls_back() {
+        for quality in [25u8, 26, 92, 99, 100] {
+            let s = AppSettings {
+                jpeg_quality: quality,
+                ..custom()
+            };
+            assert_eq!(AppSettings::parse(&s.to_text()), s, "{quality}");
+        }
+        for text in ["24", "0", "101", "256", "-1", "9x", ""] {
+            let s = AppSettings::parse(&format!("version=1\njpeg_quality={text}\n"));
+            assert_eq!(s.jpeg_quality, 95, "{text:?}");
+        }
+        let s = AppSettings {
+            jpeg_quality: 92,
+            ..AppSettings::default()
+        };
+        assert_eq!(s.jpeg_quality_index(), CUSTOM_QUALITY_INDEX);
+    }
+
+    #[test]
+    fn set_jpeg_quality_rounds_clamps_and_ignores_nan() {
+        let mut s = AppSettings::default();
+        assert!(s.set_jpeg_quality(91.6));
+        assert_eq!(s.jpeg_quality(), 92);
+        assert!(!s.set_jpeg_quality(92.2));
+        assert!(!s.set_jpeg_quality(f32::NAN));
+        assert!(s.set_jpeg_quality(-5.0));
+        assert_eq!(s.jpeg_quality(), MIN_JPEG_QUALITY);
+        assert!(s.set_jpeg_quality(f32::INFINITY));
+        assert_eq!(s.jpeg_quality(), MAX_JPEG_QUALITY);
+    }
+
+    #[test]
+    fn old_aspect_names_still_load_and_new_ones_round_trip() {
+        for (name, aspect) in [
+            ("1:1", AspectRatio::Square),
+            ("4:5", AspectRatio::Portrait4x5),
+            ("9:16", AspectRatio::Story9x16),
+            ("16:9", AspectRatio::Landscape16x9),
+            ("3:4", AspectRatio::Portrait3x4),
+            ("2:3", AspectRatio::Portrait2x3),
+            ("4:3", AspectRatio::Landscape4x3),
+            ("3:2", AspectRatio::Landscape3x2),
+        ] {
+            let s = AppSettings::parse(&format!("version=1\naspect={name}\n"));
+            assert_eq!(s.aspect, aspect, "{name}");
+        }
+    }
+
+    #[test]
+    fn custom_background_round_trips_as_hex_and_presets_stay_indices() {
+        let s = AppSettings {
+            background: Rgba::new(0x12, 0xAB, 0xEF, 255),
+            ..custom()
+        };
+        assert!(s.to_text().contains("background=#12ABEF\n"));
+        assert_eq!(AppSettings::parse(&s.to_text()), s);
+        assert_eq!(s.background_index(), CUSTOM_BACKGROUND_INDEX);
+        let preset = AppSettings {
+            background: BACKGROUND_PRESETS[2],
+            ..custom()
+        };
+        assert!(preset.to_text().contains("background=2\n"));
+        // A custom colour equal to a preset is stored (and shown) as that preset.
+        let mut same = AppSettings::default();
+        assert!(same.set_background_color(18, 18, 18));
+        assert_eq!(same.background_index(), 1);
+        // Lowercase hex is accepted.
+        let lower = AppSettings::parse("version=1\nbackground=#12abef\n");
+        assert_eq!(lower.background, Rgba::new(0x12, 0xAB, 0xEF, 255));
+    }
+
+    #[test]
+    fn invalid_background_values_fall_back_to_factory() {
+        for text in [
+            "#12345", "#1234567", "#GGGGGG", "#", "#12 456", "#ééé", "12ABEF", "6", "-1", "",
+            "#+12345",
+        ] {
+            let s = AppSettings::parse(&format!("version=1\nbackground={text}\n"));
+            assert_eq!(s.background, AppSettings::default().background, "{text:?}");
         }
     }
 
@@ -464,11 +611,11 @@ mod tests {
 
     #[test]
     fn partial_files_keep_factory_values_for_missing_keys() {
-        let s = AppSettings::parse("version=1\njpeg_quality=95\n");
-        assert_eq!(s.jpeg_quality, 95);
+        let s = AppSettings::parse("version=1\njpeg_quality=85\n");
+        assert_eq!(s.jpeg_quality, 85);
         assert_eq!(
             AppSettings {
-                jpeg_quality: 90,
+                jpeg_quality: 95,
                 ..s
             },
             AppSettings::default()
@@ -484,18 +631,18 @@ mod tests {
 
     #[test]
     fn invalid_values_fall_back_per_key_without_affecting_others() {
-        let text = "version=1\naspect=3:2\nspacing=NaN\npadding=inf\ncorner_radius=-0.1\n\
-                    background=99\nexport_long_edge=2500\njpeg_quality=100\n";
+        let text = "version=1\naspect=5:7\nspacing=NaN\npadding=inf\ncorner_radius=-0.1\n\
+                    background=99\nexport_long_edge=2500\njpeg_quality=101\n";
         assert_eq!(AppSettings::parse(text), AppSettings::default());
         let text = "version=1\nspacing=abc\npadding=0.05\nbackground=-1\ncorner_radius=9\n\
-                    export_long_edge=4000\njpeg_quality=300\naspect=\n";
+                    export_long_edge=4000\njpeg_quality=24\naspect=\n";
         let s = AppSettings::parse(text);
         assert!(close(s.padding, 0.05));
         assert_eq!(s.export_options().long_edge, 4000);
         assert_eq!(s.spacing, AppSettings::default().spacing);
         assert_eq!(s.corner_radius, AppSettings::default().corner_radius);
-        assert_eq!(s.background, 0);
-        assert_eq!(s.jpeg_quality, 90);
+        assert_eq!(s.background, BACKGROUND_PRESETS[0]);
+        assert_eq!(s.jpeg_quality, 95);
     }
 
     #[test]
@@ -517,10 +664,10 @@ mod tests {
         assert!(s.set_corner_radius(f32::INFINITY));
         assert!(close(s.corner_radius, MAX_CORNER_RADIUS));
 
-        assert!(s.set_aspect_index(3));
+        assert!(s.set_aspect_index(7));
         assert_eq!(s.aspect, AspectRatio::Landscape16x9);
-        assert!(!s.set_aspect_index(3));
-        assert!(!s.set_aspect_index(4));
+        assert!(!s.set_aspect_index(7));
+        assert!(!s.set_aspect_index(8));
         assert!(!s.set_aspect_index(-1));
 
         assert!(s.set_background_index(5));
@@ -532,8 +679,8 @@ mod tests {
         assert_eq!(s.export_options().long_edge, 6000);
         assert!(!s.set_export_size_index(4));
         assert!(s.set_jpeg_quality_index(0));
-        assert_eq!(s.export_options().jpeg_quality, 85);
-        assert!(!s.set_jpeg_quality_index(3));
+        assert_eq!(s.export_options().jpeg_quality, 75);
+        assert!(!s.set_jpeg_quality_index(3)); // custom is a mode, not a value
         assert!(!s.set_jpeg_quality_index(i32::MIN));
     }
 
@@ -590,5 +737,24 @@ mod tests {
         // A directory below a regular file cannot be created.
         assert!(save(&file.join("sub"), &custom()).is_err());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ui_aspect_labels_match_the_aspect_names_in_display_order() {
+        let texts = include_str!("../ui/texts.slint");
+        let line = texts
+            .lines()
+            .find(|l| l.contains("aspect-labels:"))
+            .unwrap();
+        let labels: Vec<&str> = line
+            .split("aspect-labels: [")
+            .nth(1)
+            .and_then(|rest| rest.split(']').next())
+            .unwrap()
+            .split(',')
+            .map(|l| l.trim().trim_matches('"'))
+            .collect();
+        let names: Vec<&str> = AspectRatio::ALL.iter().map(|&a| aspect_name(a)).collect();
+        assert_eq!(labels, names);
     }
 }

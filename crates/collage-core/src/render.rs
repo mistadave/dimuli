@@ -18,7 +18,7 @@ pub const EXPORT_LONG_EDGE: u32 = 3000;
 /// Largest long edge accepted by the renderer (bounds memory for the output image).
 pub const MAX_EXPORT_LONG_EDGE: u32 = 8192;
 /// Default JPEG quality (1–100).
-pub const EXPORT_JPEG_QUALITY: u8 = 90;
+pub const EXPORT_JPEG_QUALITY: u8 = 95;
 
 /// Where the original pixels of an image live.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -548,7 +548,11 @@ mod tests {
         let expected = [
             (AspectRatio::Square, (1000, 1000)),
             (AspectRatio::Portrait4x5, (800, 1000)),
+            (AspectRatio::Portrait3x4, (750, 1000)),
+            (AspectRatio::Portrait2x3, (667, 1000)),
             (AspectRatio::Story9x16, (563, 1000)),
+            (AspectRatio::Landscape4x3, (1000, 750)),
+            (AspectRatio::Landscape3x2, (1000, 667)),
             (AspectRatio::Landscape16x9, (1000, 563)),
         ];
         for (aspect, size) in expected {
@@ -604,7 +608,7 @@ mod tests {
     #[test]
     fn default_options_use_documented_values() {
         let o = ExportOptions::default();
-        assert_eq!((o.long_edge, o.jpeg_quality), (3000, 90));
+        assert_eq!((o.long_edge, o.jpeg_quality), (3000, 95));
     }
 
     #[test]

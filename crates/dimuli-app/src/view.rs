@@ -14,6 +14,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::images::ImageStore;
 use crate::licenses;
+use crate::settings::{MAX_JPEG_QUALITY, MIN_JPEG_QUALITY};
 use crate::state::{AppState, Busy, Gesture, MessageKind};
 use crate::ui::{
     AppWindow, Backend, CellView, DividerView, LicenseEntry, MessageStyle, Screen, TemplateRect,
@@ -337,6 +338,9 @@ pub(crate) struct Snapshot {
     padding: f32,
     corner_radius: f32,
     background_index: i32,
+    default_background_color: slint::Color,
+    color_picker_color: slint::Color,
+    color_picker_visible: bool,
     default_aspect_index: i32,
     default_spacing: f32,
     default_padding: f32,
@@ -344,6 +348,7 @@ pub(crate) struct Snapshot {
     default_background_index: i32,
     export_size_index: i32,
     export_quality_index: i32,
+    export_quality: i32,
 }
 
 /// Slint index of an optional list position; `-1` (nothing selected) if absent.
@@ -392,6 +397,13 @@ impl Models {
         backend.set_max_spacing(MAX_SPACING);
         backend.set_max_padding(MAX_PADDING);
         backend.set_max_corner_radius(MAX_CORNER_RADIUS);
+        backend
+            .set_custom_quality_index(index_or_none(Some(crate::settings::CUSTOM_QUALITY_INDEX)));
+        backend.set_custom_background_index(index_or_none(Some(
+            crate::settings::CUSTOM_BACKGROUND_INDEX,
+        )));
+        backend.set_min_export_quality(i32::from(MIN_JPEG_QUALITY));
+        backend.set_max_export_quality(i32::from(MAX_JPEG_QUALITY));
         let presets: Vec<slint::Color> = BACKGROUND_PRESETS
             .iter()
             .map(|&c| to_slint_color(c))
@@ -472,18 +484,22 @@ impl Models {
             spacing: style.map_or(0.0, |s| s.spacing),
             padding: style.map_or(0.0, |s| s.padding),
             corner_radius: style.map_or(0.0, |s| s.corner_radius),
-            background_index: BACKGROUND_PRESETS
-                .iter()
-                .position(|&c| c == background)
-                .and_then(|i| i32::try_from(i).ok())
-                .unwrap_or(-1),
+            background_index: index_or_none(Some(crate::settings::preset_index(background))),
+            default_background_color: to_slint_color(state.settings.background_color()),
+            color_picker_color: to_slint_color(state.color_picker_color().unwrap_or(Rgba::WHITE)),
+            color_picker_visible: state.color_picker.is_some(),
             default_aspect_index: index_or_none(state.settings.aspect_index()),
             default_spacing: state.settings.spacing,
             default_padding: state.settings.padding,
             default_corner_radius: state.settings.corner_radius,
             default_background_index: index_or_none(Some(state.settings.background_index())),
             export_size_index: index_or_none(state.settings.export_size_index()),
-            export_quality_index: index_or_none(state.settings.jpeg_quality_index()),
+            export_quality_index: index_or_none(Some(if state.custom_quality_mode {
+                crate::settings::CUSTOM_QUALITY_INDEX
+            } else {
+                state.settings.jpeg_quality_index()
+            })),
+            export_quality: i32::from(state.settings.jpeg_quality()),
         }
     }
 
@@ -545,6 +561,10 @@ impl Models {
         backend.set_padding(snapshot.padding);
         backend.set_corner_radius(snapshot.corner_radius);
         backend.set_background_index(snapshot.background_index);
+        backend.set_default_background_color(snapshot.default_background_color);
+        // The colour first, so the dialog never starts with the previous one.
+        backend.set_color_picker_color(snapshot.color_picker_color);
+        backend.set_color_picker_visible(snapshot.color_picker_visible);
         backend.set_default_aspect_index(snapshot.default_aspect_index);
         backend.set_default_spacing(snapshot.default_spacing);
         backend.set_default_padding(snapshot.default_padding);
@@ -552,6 +572,7 @@ impl Models {
         backend.set_default_background_index(snapshot.default_background_index);
         backend.set_export_size_index(snapshot.export_size_index);
         backend.set_export_quality_index(snapshot.export_quality_index);
+        backend.set_export_quality(snapshot.export_quality);
 
         // Canvas size and rows change in the same apply, so no frame mixes old cells with a new canvas.
         backend.set_canvas_width(snapshot.canvas_width);

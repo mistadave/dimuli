@@ -33,12 +33,14 @@ export component ConfirmDialog inherits Rectangle {
                 spacing: Theme.spacing-s;
                 alignment: end;
                 AppButton {
+                    compact: true;
                     text: Texts.back-cancel;
                     clicked => {
                         Backend.back-cancelled();
                     }
                 }
                 AppButton {
+                    compact: true;
                     text: Texts.back-confirm;
                     primary: true;
                     clicked => {

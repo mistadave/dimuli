@@ -1,18 +1,29 @@
 import { Theme } from "theme.slint";
 import { AppButton } from "app-button.slint";
 
-// A row of buttons of which one is selected (format, export size, quality).
-export component ChoiceRow inherits HorizontalLayout {
+// Buttons of which one is selected (format, export size, quality), in rows of `columns` equally wide buttons;
+// the last row is padded with empty cells so all buttons keep the same width.
+export component ChoiceRow inherits VerticalLayout {
     in property <[string]> labels;
     in property <int> selected: -1;
+    in property <int> columns: 4;
     callback choose(int);
 
     spacing: Theme.spacing-s;
-    for label[index] in root.labels: AppButton {
-        text: label;
-        primary: index == root.selected;
-        clicked => {
-            root.choose(index);
+    for row in Math.ceil(root.labels.length / root.columns): HorizontalLayout {
+        spacing: Theme.spacing-s;
+        for column in root.columns: Rectangle {
+            min-height: Theme.touch-target;
+            if row * root.columns + column < root.labels.length: AppButton {
+                width: parent.width;
+                height: parent.height;
+                compact: true;
+                text: root.labels[row * root.columns + column];
+                primary: row * root.columns + column == root.selected;
+                clicked => {
+                    root.choose(row * root.columns + column);
+                }
+            }
         }
     }
 }

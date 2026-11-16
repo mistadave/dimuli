@@ -11,6 +11,8 @@ export component BackBar inherits Rectangle {
     background: Theme.surface;
 
     HorizontalLayout {
+        // Children keep their own width: the back button hugs its label, the title sits next to it.
+        alignment: start;
         padding: Theme.spacing-s;
         spacing: Theme.spacing-s;
         AppButton {
@@ -25,7 +27,6 @@ export component BackBar inherits Rectangle {
             font-weight: 700;
             color: Theme.on-surface;
             vertical-alignment: center;
-            horizontal-stretch: 1;
         }
     }
 }

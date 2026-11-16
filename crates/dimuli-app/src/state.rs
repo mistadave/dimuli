@@ -5,11 +5,11 @@
 
 use collage_core::{
     AspectRatio, CellId, CellTransform, Collage, CoreError, DividerId, ExportOptions, ImageSource,
-    MAX_IMAGES, Size, Style, Template, Vec2, templates_for,
+    MAX_IMAGES, Rgba, Size, Style, Template, Vec2, templates_for,
 };
 
 use crate::images::{ImageStore, LoadedImage};
-use crate::settings::AppSettings;
+use crate::settings::{AppSettings, JPEG_QUALITY_PRESETS};
 use crate::texts;
 use crate::view::{self, BACKGROUND_PRESETS, SwapHighlight};
 
@@ -145,6 +145,15 @@ pub(crate) struct ExportJob {
     pub(crate) options: ExportOptions,
 }
 
+/// What the colour picker dialog changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ColorTarget {
+    /// The background of the open collage (editor).
+    Collage,
+    /// The default background for new collages (settings screen).
+    Default,
+}
+
 /// Everything the UI shows.
 pub(crate) struct AppState {
     pub(crate) screen: Screen,
@@ -174,6 +183,11 @@ pub(crate) struct AppState {
     pub(crate) settings: AppSettings,
     /// Settings changed since the last save (slider drags are saved on release or when leaving the screen).
     settings_unsaved: bool,
+    /// The colour picker dialog, if open. Its colour is UI-only until the user applies it.
+    pub(crate) color_picker: Option<ColorTarget>,
+    /// The "Eigene" quality mode is chosen (its slider is shown) although the value may equal a preset.
+    /// Set by [`AppState::select_custom_quality`], cleared by a preset and by the reset.
+    pub(crate) custom_quality_mode: bool,
 }
 
 impl AppState {
@@ -196,6 +210,8 @@ impl AppState {
             gesture: Gesture::Idle,
             settings: AppSettings::default(),
             settings_unsaved: false,
+            color_picker: None,
+            custom_quality_mode: false,
         }
     }
 
@@ -519,6 +535,9 @@ impl AppState {
             BackOutcome::Handled
         } else if self.confirm_back {
             self.confirm_back = false;
+            BackOutcome::Handled
+        } else if self.color_picker.take().is_some() {
+            // Back cancels the dialog instead of leaving the screen behind it.
             BackOutcome::Handled
         } else if self.screen == Screen::About {
             self.screen = Screen::Settings;
@@ -921,19 +940,90 @@ impl AppState {
         self.change_settings(|s| s.set_export_size_index(index))
     }
 
-    /// JPEG quality by index into [`crate::settings::JPEG_QUALITY_PRESETS`].
+    /// Exact JPEG quality (rounded, clamped to the allowed range); used by the custom-quality slider.
+    pub(crate) fn set_export_quality_value(&mut self, value: f32) -> bool {
+        self.change_settings(|s| s.set_jpeg_quality(value))
+    }
+
+    /// Moves the JPEG quality by `delta` steps (the - and + buttons of the custom quality).
+    pub(crate) fn step_export_quality(&mut self, delta: i32) -> bool {
+        self.change_settings(|s| s.set_jpeg_quality(f32::from(s.jpeg_quality()) + delta as f32))
+    }
+
+    /// JPEG quality preset by index into [`crate::settings::JPEG_QUALITY_PRESETS`].
     pub(crate) fn set_export_quality(&mut self, index: i32) -> bool {
+        if !self.busy.is_some()
+            && usize::try_from(index).is_ok_and(|i| i < JPEG_QUALITY_PRESETS.len())
+        {
+            self.custom_quality_mode = false;
+        }
         self.change_settings(|s| s.set_jpeg_quality_index(index))
+    }
+
+    /// Switches to the custom quality mode ("Eigene"): shows the slider without changing the value.
+    pub(crate) fn select_custom_quality(&mut self) {
+        if self.busy.is_none() {
+            self.custom_quality_mode = true;
+        }
     }
 
     /// Restores all defaults to the factory values.
     pub(crate) fn reset_settings_to_factory(&mut self) -> bool {
+        if self.busy.is_none() {
+            self.custom_quality_mode = false;
+        }
         self.change_settings(AppSettings::reset)
     }
 
     /// Tells the user that the settings could not be stored (they still apply until the app closes).
     pub(crate) fn settings_save_failed(&mut self) {
         self.show_error(texts::SETTINGS_SAVE_FAILED);
+    }
+
+    // --- colour picker ---
+
+    /// Opens the colour picker for the screen in front: the collage background in the editor, the default
+    /// background in the settings. `false` (nothing changed) elsewhere or while busy.
+    pub(crate) fn open_color_picker(&mut self) -> bool {
+        if self.busy.is_some() || self.confirm_back {
+            return false;
+        }
+        self.color_picker = match self.screen {
+            Screen::Editor if self.collage.is_some() => Some(ColorTarget::Collage),
+            Screen::Settings => Some(ColorTarget::Default),
+            _ => return false,
+        };
+        true
+    }
+
+    /// Closes the picker without changing anything.
+    pub(crate) fn close_color_picker(&mut self) {
+        self.color_picker = None;
+    }
+
+    /// The colour the open picker starts with: the current colour of its target.
+    pub(crate) fn color_picker_color(&self) -> Option<Rgba> {
+        match self.color_picker? {
+            ColorTarget::Collage => self.collage.as_ref().map(|c| c.style().background),
+            ColorTarget::Default => Some(self.settings.background_color()),
+        }
+    }
+
+    /// Applies the colour chosen in the picker to its target and closes it. Returns whether the settings
+    /// changed and must be saved (only for the default background).
+    pub(crate) fn apply_picker_color(&mut self, r: u8, g: u8, b: u8) -> bool {
+        let Some(target) = self.color_picker.take() else {
+            return false;
+        };
+        match target {
+            ColorTarget::Collage => {
+                if self.busy.is_none() {
+                    self.update_style(|s| s.background = Rgba::new(r, g, b, 255));
+                }
+                false
+            }
+            ColorTarget::Default => self.change_settings(|s| s.set_background_color(r, g, b)),
+        }
     }
 
     pub(crate) fn select_background(&mut self, index: i32) {
@@ -1994,9 +2084,9 @@ mod tests {
         state.select_background(99);
         state.select_background(-1);
         assert_eq!(collage(&state).style().background, BACKGROUND_PRESETS[1]);
-        state.select_aspect(3);
+        state.select_aspect(7);
         assert_eq!(collage(&state).aspect(), AspectRatio::Landscape16x9);
-        state.select_aspect(4);
+        state.select_aspect(8);
         assert_eq!(collage(&state).aspect(), AspectRatio::Landscape16x9);
     }
 
@@ -2015,7 +2105,7 @@ mod tests {
     fn aspect_change_refits_canvas_and_cells_in_one_transition() {
         let mut state = editor(&[(100, 100), (100, 100)]);
         assert_eq!(state.canvas, Size::new(300.0, 300.0));
-        state.select_aspect(3);
+        state.select_aspect(7);
         let expected = view::fit_canvas(state.canvas_area, Size::new(1.0, 9.0 / 16.0));
         assert_eq!(state.canvas, expected);
         assert!((state.canvas.height - 168.75).abs() < 1e-3);
@@ -2030,7 +2120,7 @@ mod tests {
             assert!(v.y + v.height <= state.canvas.height + 1e-3);
             assert!(v.x + v.width <= state.canvas.width + 1e-3);
         }
-        state.select_aspect(2);
+        state.select_aspect(4);
         assert!((state.canvas.width - 168.75).abs() < 1e-3);
         assert!((state.canvas.height - 300.0).abs() < 1e-3);
     }
@@ -2095,7 +2185,7 @@ mod tests {
         state.pinch_started();
         state.pinch(2.0, x, y);
         state.select_template(1);
-        state.select_aspect(3);
+        state.select_aspect(7);
         state.set_spacing(0.02);
         state.set_padding(0.05);
         state.set_corner_radius(0.05);
@@ -2227,13 +2317,13 @@ mod tests {
 
     fn configured() -> AppSettings {
         let mut s = AppSettings::default();
-        assert!(s.set_aspect_index(2));
+        assert!(s.set_aspect_index(4));
         assert!(s.set_spacing(0.02));
         assert!(s.set_padding(0.05));
         assert!(s.set_corner_radius(0.03));
         assert!(s.set_background_index(1));
         assert!(s.set_export_size_index(3));
-        assert!(s.set_jpeg_quality_index(2));
+        assert!(s.set_jpeg_quality_index(0));
         s
     }
 
@@ -2278,7 +2368,7 @@ mod tests {
         assert!((state.settings.spacing - MAX_SPACING).abs() < 1e-6);
         assert!(!state.set_default_background(-1));
         assert!(!state.set_export_size(4));
-        assert!(!state.set_export_quality(3));
+        assert!(!state.set_export_quality(3)); // "custom" is a UI mode, not a value
         assert!(state.set_export_size(0));
         assert!(state.set_export_quality(0));
         assert!(state.reset_settings_to_factory());
@@ -2304,10 +2394,10 @@ mod tests {
         );
         state.busy = None;
         assert!(state.set_export_size(3));
-        assert!(state.set_export_quality(2));
+        assert!(state.set_export_quality(0));
         let options = state.begin_export(ExportAction::Save).unwrap().options;
         assert_eq!(options.long_edge, 6000);
-        assert_eq!(options.jpeg_quality, 95);
+        assert_eq!(options.jpeg_quality, 75);
     }
 
     #[test]
@@ -2363,5 +2453,164 @@ mod tests {
         state.begin_export(ExportAction::Save).unwrap();
         assert!(!state.set_default_spacing(0.03));
         assert!(!state.take_unsaved_settings());
+    }
+
+    #[test]
+    fn custom_export_quality_is_rounded_clamped_and_used_by_the_export() {
+        let mut state = editor(&[(40, 30)]);
+        assert!(state.set_export_quality_value(92.4));
+        assert_eq!(state.settings.jpeg_quality(), 92);
+        assert_eq!(
+            state.settings.jpeg_quality_index(),
+            crate::settings::CUSTOM_QUALITY_INDEX
+        );
+        assert!(!state.set_export_quality_value(f32::NAN));
+        assert!(state.set_export_quality_value(1000.0));
+        assert_eq!(state.settings.jpeg_quality(), 100);
+        assert!(!state.set_export_quality_value(f32::INFINITY));
+        assert!(state.set_export_quality_value(f32::NEG_INFINITY));
+        assert_eq!(state.settings.jpeg_quality(), 25);
+        assert!(state.take_unsaved_settings());
+        assert!(state.set_export_quality_value(77.0));
+        let options = state.begin_export(ExportAction::Save).unwrap().options;
+        assert_eq!(options.jpeg_quality, 77);
+    }
+
+    #[test]
+    fn quality_steps_stop_at_the_limits_and_selecting_a_preset_replaces_a_custom_value() {
+        let mut state = AppState::new();
+        assert!(state.step_export_quality(1));
+        assert_eq!(state.settings.jpeg_quality(), 96);
+        assert!(state.step_export_quality(-2));
+        assert_eq!(state.settings.jpeg_quality(), 94);
+        assert!(state.set_export_quality_value(100.0));
+        assert!(!state.step_export_quality(1));
+        assert!(state.set_export_quality_value(25.0));
+        assert!(!state.step_export_quality(-1));
+        assert!(state.set_export_quality(1));
+        assert_eq!(state.settings.jpeg_quality(), 85);
+        assert_eq!(state.settings.jpeg_quality_index(), 1);
+    }
+
+    #[test]
+    fn every_aspect_can_be_chosen_as_default_and_is_used_for_new_collages() {
+        for (index, aspect) in AspectRatio::ALL.into_iter().enumerate() {
+            let mut state = AppState::new();
+            let index = i32::try_from(index).unwrap();
+            assert_eq!(state.set_default_aspect(index), index != 0);
+            assert!(state.begin_loading());
+            state.finish_loading(vec![Ok(loaded(40, 30))], false, 0);
+            assert_eq!(collage(&state).aspect(), aspect);
+        }
+    }
+
+    #[test]
+    fn color_picker_opens_in_editor_and_settings_only_and_not_while_busy() {
+        let mut state = AppState::new();
+        assert!(!state.open_color_picker());
+        assert!(state.open_settings());
+        assert!(state.open_color_picker());
+        assert_eq!(state.color_picker, Some(ColorTarget::Default));
+        assert_eq!(state.color_picker_color(), Some(Rgba::WHITE));
+        state.close_color_picker();
+        assert!(state.open_about());
+        assert!(!state.open_color_picker());
+
+        let mut state = editor(&[(10, 10)]);
+        assert!(state.open_color_picker());
+        assert_eq!(state.color_picker, Some(ColorTarget::Collage));
+        state.close_color_picker();
+        state.begin_export(ExportAction::Save).unwrap();
+        assert!(!state.open_color_picker());
+        state.busy = None;
+        state.request_back();
+        assert!(state.confirm_back);
+        assert!(!state.open_color_picker());
+    }
+
+    #[test]
+    fn applying_in_the_editor_changes_only_the_open_collage() {
+        let mut state = editor(&[(10, 10)]);
+        assert!(state.open_color_picker());
+        assert_eq!(
+            state.color_picker_color(),
+            Some(collage(&state).style().background)
+        );
+        assert!(!state.apply_picker_color(10, 20, 30));
+        assert!(state.color_picker.is_none());
+        assert_eq!(
+            collage(&state).style().background,
+            Rgba::new(10, 20, 30, 255)
+        );
+        assert_eq!(state.settings, AppSettings::default());
+        assert!(!state.take_unsaved_settings());
+    }
+
+    #[test]
+    fn applying_in_the_settings_changes_the_default_and_needs_a_save() {
+        let mut state = AppState::new();
+        assert!(state.open_settings());
+        assert!(state.open_color_picker());
+        assert!(state.apply_picker_color(1, 2, 3));
+        assert_eq!(state.settings.background_color(), Rgba::new(1, 2, 3, 255));
+        assert!(state.take_unsaved_settings());
+        // A second apply without an open picker does nothing.
+        assert!(!state.apply_picker_color(9, 9, 9));
+        assert_eq!(state.settings.background_color(), Rgba::new(1, 2, 3, 255));
+        // New collages start with the custom colour.
+        state.request_back();
+        assert!(state.begin_loading());
+        state.finish_loading(vec![Ok(loaded(40, 30))], false, 0);
+        assert_eq!(collage(&state).style().background, Rgba::new(1, 2, 3, 255));
+    }
+
+    #[test]
+    fn back_cancels_the_picker_first_without_changes_or_leaving_the_screen() {
+        let mut state = AppState::new();
+        assert!(state.open_settings());
+        assert!(state.open_color_picker());
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert!(state.color_picker.is_none());
+        assert_eq!(state.screen, Screen::Settings);
+        assert_eq!(state.settings, AppSettings::default());
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert_eq!(state.screen, Screen::Start);
+
+        let mut state = editor(&[(10, 10)]);
+        assert!(state.open_color_picker());
+        assert_eq!(state.request_back(), BackOutcome::Handled);
+        assert!(state.color_picker.is_none());
+        assert!(!state.confirm_back);
+        assert_eq!(state.screen, Screen::Editor);
+        assert_eq!(
+            collage(&state).style().background,
+            Style::default().background
+        );
+    }
+
+    #[test]
+    fn custom_quality_mode_survives_equal_values_and_ends_with_a_preset_or_reset() {
+        let mut state = AppState::new();
+        assert!(!state.custom_quality_mode);
+        state.select_custom_quality();
+        assert!(state.custom_quality_mode);
+        // The value is untouched and no save is pending.
+        assert_eq!(state.settings, AppSettings::default());
+        assert!(!state.take_unsaved_settings());
+        assert!(state.set_export_quality_value(80.0));
+        assert!(state.custom_quality_mode);
+        // An invalid index keeps the mode, a preset ends it.
+        state.set_export_quality(9);
+        assert!(state.custom_quality_mode);
+        state.set_export_quality(0);
+        assert!(!state.custom_quality_mode);
+
+        state.select_custom_quality();
+        assert!(state.reset_settings_to_factory());
+        assert!(!state.custom_quality_mode);
+        // The reset ends the mode even when nothing else changed.
+        state.select_custom_quality();
+        assert!(!state.reset_settings_to_factory());
+        assert!(!state.custom_quality_mode);
     }
 }

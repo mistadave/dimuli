@@ -7,6 +7,8 @@ import { BackBar } from "back-bar.slint";
 import { SliderRow } from "slider-row.slint";
 import { ChoiceRow } from "choice-row.slint";
 import { SwatchRow } from "swatch-row.slint";
+import { Separator } from "separator.slint";
+import { ValueSlider } from "value-slider.slint";
 
 component Heading inherits Text {
     font-size: Theme.font-l;
@@ -47,6 +49,7 @@ export component SettingsScreen inherits Rectangle {
                         Backend.default-aspect-selected(index);
                     }
                 }
+                Separator { }
                 SliderRow {
                     label: Texts.spacing;
                     value: Backend.default-spacing;
@@ -80,17 +83,24 @@ export component SettingsScreen inherits Rectangle {
                         Backend.settings-committed();
                     }
                 }
+                Separator { }
                 Label {
                     text: Texts.background;
                 }
                 SwatchRow {
                     colors: Backend.background-presets;
                     selected: Backend.default-background-index;
+                    custom-index: Backend.custom-background-index;
+                    current: Backend.default-background-color;
                     choose(index) => {
                         Backend.default-background-selected(index);
                     }
+                    custom-requested => {
+                        Backend.color-picker-requested();
+                    }
                 }
 
+                Separator { }
                 Heading {
                     text: Texts.export-heading;
                 }
@@ -104,17 +114,61 @@ export component SettingsScreen inherits Rectangle {
                         Backend.export-size-selected(index);
                     }
                 }
+                Separator { }
                 Label {
                     text: Texts.export-quality;
                 }
                 ChoiceRow {
                     labels: Texts.export-quality-labels;
+                    columns: 2;
                     selected: Backend.export-quality-index;
                     choose(index) => {
-                        Backend.export-quality-selected(index);
+                        // "Eigene" only opens the slider; a preset sets the value.
+                        if (index == Backend.custom-quality-index) {
+                            Backend.export-quality-custom-selected();
+                        } else {
+                            Backend.export-quality-selected(index);
+                        }
+                    }
+                }
+                if Backend.export-quality-index == Backend.custom-quality-index: HorizontalLayout {
+                    spacing: Theme.spacing-s;
+                    AppButton {
+                        max-width: Theme.touch-target;
+                        text: "-";
+                        clicked => {
+                            Backend.export-quality-stepped(-1);
+                        }
+                    }
+                    ValueSlider {
+                        horizontal-stretch: 1;
+                        value: Backend.export-quality - Backend.min-export-quality;
+                        maximum: Backend.max-export-quality - Backend.min-export-quality;
+                        changed(v) => {
+                            Backend.export-quality-changed(v + Backend.min-export-quality);
+                        }
+                        released => {
+                            Backend.settings-committed();
+                        }
+                    }
+                    AppButton {
+                        max-width: Theme.touch-target;
+                        text: "+";
+                        clicked => {
+                            Backend.export-quality-stepped(1);
+                        }
+                    }
+                    Text {
+                        width: Theme.value-label-width;
+                        text: Backend.export-quality;
+                        font-size: Theme.font-m;
+                        color: Theme.on-surface;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
                     }
                 }
 
+                Separator { }
                 if !root.confirm-reset: AppButton {
                     text: Texts.reset-defaults;
                     clicked => {
@@ -130,12 +184,14 @@ export component SettingsScreen inherits Rectangle {
                     HorizontalLayout {
                         spacing: Theme.spacing-s;
                         AppButton {
+                            compact: true;
                             text: Texts.back-cancel;
                             clicked => {
                                 root.confirm-reset = false;
                             }
                         }
                         AppButton {
+                            compact: true;
                             text: Texts.reset-confirm;
                             primary: true;
                             clicked => {

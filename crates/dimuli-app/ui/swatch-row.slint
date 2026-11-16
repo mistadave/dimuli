@@ -1,26 +1,52 @@
 import { Theme } from "theme.slint";
 
-// Background colour swatches; shared by the editor panel and the settings screen.
-export component SwatchRow inherits HorizontalLayout {
+// Background colour swatches; shared by the editor panel and the settings screen. After the presets comes
+// a swatch for a custom colour: a hue wheel while unused, the chosen colour while active
+// (`selected == custom-index`). All swatches stay at least `touch-target` wide: on a narrow panel they
+// wrap into two rows instead of scrolling sideways.
+export component SwatchRow inherits Rectangle {
     in property <[color]> colors;
     in property <int> selected: -1;
+    // Index of the custom swatch (the presets come before it); from Rust.
+    in property <int> custom-index: -1;
+    // The current colour; shown on the custom swatch while it is active.
+    in property <color> current;
     callback choose(int);
+    callback custom-requested();
 
-    spacing: Theme.spacing-s;
-    for color[index] in root.colors: Rectangle {
+    property <int> count: root.colors.length + 1;
+    property <bool> custom-active: root.selected == root.custom-index;
+    property <bool> fits: root.width >= root.count * Theme.touch-target;
+    property <int> per-row: root.fits ? root.count : Math.ceil(root.count / 2);
+    property <int> rows: Math.ceil(root.count / root.per-row);
+    // Distance between swatch cells: the preferred gap, or less so a full row still fits.
+    property <length> pitch: min(Theme.touch-target + Theme.spacing-s, root.width / root.per-row);
+
+    min-height: root.rows * Theme.touch-target + (root.rows - 1) * Theme.spacing-s;
+    max-height: root.min-height;
+
+    for index in root.count: Rectangle {
+        x: mod(index, root.per-row) * root.pitch;
+        y: floor(index / root.per-row) * (Theme.touch-target + Theme.spacing-s);
         width: Theme.touch-target;
         height: Theme.touch-target;
+        property <bool> is-custom: index == root.custom-index;
+        property <bool> active: index == root.selected;
         Rectangle {
             width: Theme.swatch;
             height: Theme.swatch;
             border-radius: self.width / 2;
-            background: color;
-            border-width: index == root.selected ? Theme.border-thick : Theme.border-thin;
-            border-color: index == root.selected ? Theme.primary : Theme.on-surface-muted;
+            background: parent.is-custom ? (root.custom-active ? root.current : @linear-gradient(90deg, #ff4040, #ffe040, #40ff60, #40e0ff, #4060ff, #ff40e0, #ff4040)) : root.colors[index];
+            border-width: parent.active ? Theme.border-thick : Theme.border-thin;
+            border-color: parent.active ? Theme.primary : Theme.on-surface-muted;
         }
         TouchArea {
             clicked => {
-                root.choose(index);
+                if (parent.is-custom) {
+                    root.custom-requested();
+                } else {
+                    root.choose(index);
+                }
             }
         }
     }

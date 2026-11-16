@@ -70,8 +70,19 @@ export global Backend {
     in property <float> default-padding;
     in property <float> default-corner-radius;
     in property <int> default-background-index: -1;
+    in property <color> default-background-color: white;
+    // The colour picker dialog (modal); its colour is UI-only until applied.
+    in property <bool> color-picker-visible;
+    in property <color> color-picker-color: white;
     in property <int> export-size-index: -1;
+    // 0..2: a preset; 3: custom value.
     in property <int> export-quality-index: -1;
+    // Index of "Eigene" in the quality and background choices (from Rust).
+    in property <int> custom-quality-index: -1;
+    in property <int> custom-background-index: -1;
+    in property <int> export-quality: 95;
+    in property <int> min-export-quality: 50;
+    in property <int> max-export-quality: 100;
 
     // App defaults (Part B adds the settings screen).
     callback default-aspect-selected(int);
@@ -81,7 +92,14 @@ export global Backend {
     callback default-background-selected(int);
     callback export-size-selected(int);
     callback export-quality-selected(int);
+    callback export-quality-custom-selected();
+    // Exact quality from the custom slider (saved on release) and a +/- button step (saved at once).
+    callback export-quality-changed(float);
+    callback export-quality-stepped(int);
     // Sent when a default slider is released: the value is saved once, not on every drag step.
     callback settings-committed();
+    callback color-picker-requested();
+    callback color-picker-cancelled();
+    callback color-picker-applied(color);
     callback settings-reset();
 }

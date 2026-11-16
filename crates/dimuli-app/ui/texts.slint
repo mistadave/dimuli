@@ -21,18 +21,22 @@ export global Texts {
     out property <string> background: @tr("Hintergrund");
     out property <string> defaults-heading: @tr("Standard für neue Collagen");
     out property <string> export-heading: @tr("Export");
-    out property <string> export-size: @tr("Größe");
+    out property <string> export-size: @tr("Größe (lange Seite, Pixel)");
     out property <string> export-quality: @tr("Qualität");
-    out property <string> reset-defaults: @tr("Auf Werkseinstellungen zurücksetzen");
+    out property <string> reset-defaults: @tr("Zurücksetzen");
     out property <string> reset-question: @tr("Alle Einstellungen auf die Werkseinstellungen zurücksetzen?");
     out property <string> reset-confirm: @tr("Zurücksetzen");
+    out property <string> color-picker-title: @tr("Eigene Farbe");
+    out property <string> color-old: @tr("Bisher");
+    out property <string> color-new: @tr("Neu");
+    out property <string> apply: @tr("Übernehmen");
     out property <string> dismiss: @tr("Schließen");
     out property <string> editor-hint: @tr("Ziehen: Bild verschieben · Zwei Finger: zoomen · Lange drücken: tauschen");
     out property <string> back-title: @tr("Collage verwerfen?");
     out property <string> back-question: @tr("Wenn du zurückgehst, geht die aktuelle Collage verloren.");
     out property <string> back-confirm: @tr("Verwerfen");
     out property <string> back-cancel: @tr("Abbrechen");
-    out property <[string]> export-size-labels: ["2000 px", "3000 px", "4000 px", "6000 px"];
-    out property <[string]> export-quality-labels: [@tr("Normal 85"), @tr("Hoch 90"), @tr("Sehr hoch 95")];
-    out property <[string]> aspect-labels: ["1:1", "4:5", "9:16", "16:9"];
+    out property <[string]> export-size-labels: ["2000", "3000", "4000", "6000"];
+    out property <[string]> export-quality-labels: [@tr("Niedrig (75 %)"), @tr("Normal (85 %)"), @tr("Hoch (95 %)"), @tr("Eigene")];
+    out property <[string]> aspect-labels: ["1:1", "4:5", "3:4", "2:3", "9:16", "4:3", "3:2", "16:9"];
 }

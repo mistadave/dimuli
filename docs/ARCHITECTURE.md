@@ -53,7 +53,7 @@ Reine Rust-Logik ohne UI- oder Plattformabhängigkeit. Module:
 
 ```rust
 pub struct Collage {
-    aspect: AspectRatio,              // Square, Portrait4x5, Story9x16, Landscape16x9
+    aspect: AspectRatio,              // 8 Formate, siehe `AspectRatio::ALL`
     style: Style,                     // spacing, padding, corner_radius, background: Rgba
     layout: LayoutNode,
     cells: Vec<Cell>,                 // index = CellId; Felder privat, Zugriff über Methoden
@@ -112,7 +112,7 @@ pub fn render(collage: &Collage, sources: &[ImageSource], opts: ExportOptions) -
 | `controller.rs` | Dünn: verbindet UI-Callbacks und `PlatformEvent`s mit `AppState`-Übergängen und stößt danach `refresh` an; `post()` bringt Aktionen aus anderen Threads in den UI-Thread (Controller per `thread_local` auffindbar); `update_gesture` aktualisiert bei Gesten nur die betroffenen Zeilen; ein `Timer` blendet Erfolgsmeldungen aus |
 | `view.rs` | Reine Umrechnung Collage-Einheiten ↔ Pixel (1.0 = Canvas-Breite in px), `source-clip-*`, Trennlinien-Touchflächen (≥ 48 px), Wheel-Zoom; `fit_canvas` (größte Canvas mit Collage-Format in der verfügbaren Fläche, ungültige Werte ergeben 0); Gesten-Schnellpfad (bei geänderter Meldung oder anderem Bildschirm voller Refresh); `Models::snapshot/apply` schreibt `CellView`/`DividerView`/`TemplateView` in die Slint-Models (nur geänderte Zeilen) |
 | `licenses.rs` | Lizenzhinweise der Info-Seite: bettet `licenses/rust-crates.txt` (generiert) und `licenses/other-components.txt` (von Hand) per `include_str!` ein und parst sie (`parse`, panikfrei) zu `LicenseEntry { name, packages, text }`; `Models::attach` übergibt sie als Modell an `Backend.licenses`, zusammen mit `CARGO_PKG_VERSION` |
-| `settings.rs` | `AppSettings` (Standardwerte des Benutzers, `Default` = Werkseinstellung): Format, Abstand, Rand, Ecken, Hintergrund (Index in `BACKGROUND_PRESETS`), Export-Langkante (`EXPORT_SIZE_PRESETS` 2000/3000/4000/6000 px) und JPEG-Qualität (`JPEG_QUALITY_PRESETS` 85/90/95); Setter liefern „geändert“ (= Speichern nötig); `to_text`/`parse` (tolerant, nie Fehler); `load`/`save` (atomar: Temp-Datei + `rename`); Details siehe „Einstellungen“ unten |
+| `settings.rs` | `AppSettings` (Standardwerte des Benutzers, `Default` = Werkseinstellung): Format, Abstand, Rand, Ecken, Hintergrund (Preset-Index oder eigene Farbe), Export-Langkante (`EXPORT_SIZE_PRESETS` 2000/3000/4000/6000 px) und JPEG-Qualität (`JPEG_QUALITY_PRESETS` 75/85/95 plus „Eigene“ 25–100 in 1er-Schritten, `set_jpeg_quality`); Setter liefern „geändert“ (= Speichern nötig); `to_text`/`parse` (tolerant, nie Fehler); `load`/`save` (atomar: Temp-Datei + `rename`); Details siehe „Einstellungen“ unten |
 | `texts.rs` | Vom Rust-Code erzeugte deutsche Meldungen (Texte der `.slint`-Dateien: `ui/texts.slint`) |
 | `ui/` | `app.slint` (Einstieg), `backend.slint` (`global Backend`: alle Properties/Callbacks zwischen UI und Rust), `theme.slint`, `texts.slint`, `types.slint` (Structs), je eine Komponente pro Datei |
 | `platform/mod.rs` | `trait Platform`, `enum PlatformEvent`, `post_event()` |
@@ -232,6 +232,25 @@ Thread `exporter`: `render()` (Panic wird per `catch_unwind` zum Fehler) → `po
 bei Erfolg `platform.save_to_gallery(bytes)` bzw. `share(bytes)` → `Saved/Shared` → Meldung (Teilen zeigt bei Erfolg keine Meldung, D-11); bei Fehler wird der `CoreError` geloggt und eine deutsche Meldung gezeigt
 (Quellbild fehlt/unlesbar vs. allgemein). Während des Exports schluckt das Overlay alle Eingaben und die Zurück-Geste ist `Handled` (ohne Wirkung).
 
+### Formate
+
+`AspectRatio::ALL` (Anzeigereihenfolge, in Zeilen zu je vier Buttons über `ChoiceRow`, im Editor-Panel und in den
+Einstellungen): 1:1, 4:5, 3:4, 2:3 | 9:16, 4:3, 3:2, 16:9. Hochformate von quadratnah bis hoch, dann Querformate von
+quadratnah bis breit; die zweite Zeile beginnt mit dem höchsten Format. Bei 3:2 und 16:9 mit maximalem Stil und
+36 Bildern können Felder knapp unter `MIN_CELL_SIZE` starten (3:2: 0,049).
+
+### Eigene Hintergrundfarbe
+
+Nach den 6 Presets zeigt `SwatchRow` eine siebte Fläche (Farbkreis; mit aktiver eigener Farbe diese Farbe mit Ring,
+`selected == colors.length`). Tippen → `Backend.color-picker-requested` → `AppState::open_color_picker` (nur Editor
+mit Collage oder Einstellungen, nicht `busy`, nicht bei offener Rückfrage) setzt `color_picker: Option<ColorTarget>`
+(`Collage` = geöffnete Collage, `Default` = Standardfarbe). `ColorPickerDialog` (`color-picker-dialog.slint`, nur
+instanziiert, solange `color-picker-visible`) hält Farbton/Sättigung/Wert als reinen UI-Zustand (Slint
+`Colors.hsv` / `to-hsv()`, keine HSV-Rust-Logik); „Übernehmen“ → `apply_picker_color(r, g, b)` (Editor: `update_style`,
+Einstellungen: `set_background_color` + Speichern), „Abbrechen“ → `close_color_picker`. `request_back` schließt den
+Dialog zuerst (`Handled`), ohne den Bildschirm zu verlassen. Im Settings-File steht eine Preset-Farbe immer als Index,
+jede andere als `#RRGGBB`.
+
 ### Einstellungen (App-Standardwerte)
 
 `AppState.settings: AppSettings` gilt für **neue** Collagen (`finish_loading` setzt Format und Stil) und für **jeden
@@ -247,24 +266,30 @@ nie durch geänderte Einstellungen; Änderungen sind während `busy` gesperrt.
 
   ```text
   version=1
-  aspect=1:1            # 1:1 | 4:5 | 9:16 | 16:9
+  aspect=1:1            # 1:1 | 4:5 | 3:4 | 2:3 | 9:16 | 4:3 | 3:2 | 16:9 (alte Dateien laden weiter)
   spacing=0             # Collage-Einheiten, 0..=MAX_SPACING
   padding=0.01          # 0..=MAX_PADDING
   corner_radius=0       # 0..=MAX_CORNER_RADIUS
-  background=0          # Index in BACKGROUND_PRESETS
+  background=0          # Index in BACKGROUND_PRESETS, oder #RRGGBB für eine eigene Farbe
   export_long_edge=3000 # 2000 | 3000 | 4000 | 6000
-  jpeg_quality=90       # 85 | 90 | 95
+  jpeg_quality=95       # ganze Zahl 25..=100; 75/85/95 sind die Presets, alles andere gilt als „Eigene“
   ```
 
   Unbekannte Schlüssel werden ignoriert; ungültige oder außerhalb des Bereichs liegende Werte fallen je Schlüssel
   auf die Werkseinstellung zurück (kein Klemmen).
 - **Schnittstelle für die Einstellungsseite:** `AppState::set_default_aspect/_spacing/_padding/_corner_radius/
-  _background`, `set_export_size`, `set_export_quality` (Index bzw. Wert; Rückgabe `true` = gespeichert werden muss),
-  `reset_settings_to_factory`. Der Controller (`change_settings`) speichert danach über die Plattform. Backend:
-  Callbacks `default-aspect-selected`, `default-spacing-changed`, `default-padding-changed`,
-  `default-corner-radius-changed`, `default-background-selected`, `export-size-selected`,
-  `export-quality-selected`, `settings-reset` und Properties `default-*-index`/`default-spacing/-padding/-corner-radius`,
-  `export-size-index`, `export-quality-index`.
+  _background`, `set_export_size`, `set_export_quality` (Index in den Presets) und für „Eigene“ Qualität
+  `select_custom_quality` (Modus `custom_quality_mode`, ohne Wertänderung; ein Preset und der Reset beenden ihn),
+  `set_export_quality_value` (Schieberegler, speichert beim Loslassen) und `step_export_quality` (−/+, speichert
+  sofort). Die Setter liefern `true`, wenn gespeichert werden muss. Dazu `reset_settings_to_factory`. Der Controller
+  (`change_settings`) speichert danach über die Plattform. Backend:
+  - Callbacks `default-aspect-selected`, `default-spacing-changed`, `default-padding-changed`,
+    `default-corner-radius-changed`, `default-background-selected`, `export-size-selected`,
+    `export-quality-selected`, `export-quality-custom-selected`, `export-quality-changed`,
+    `export-quality-stepped`, `settings-committed`, `settings-reset`.
+  - Properties `default-*-index`, `default-spacing/-padding/-corner-radius`, `export-size-index`,
+    `export-quality-index` (zeigt den Index von „Eigene“, solange der Modus aktiv oder der Wert kein Preset ist),
+    `export-quality` sowie die Konstanten `custom-quality-index` und `custom-background-index` aus Rust.
 
 ## Grenzen und Konstanten (v1)
 
@@ -281,7 +306,7 @@ nie durch geänderte Einstellungen; Änderungen sind während `busy` gesperrt.
 | `MIN_CELL_SIZE` | 0.05 | Feld wird beim Ziehen nicht schmaler als 5 % der Collage-Breite; in 16:9 mit vielen Bildern und maximalem Stil können Felder schon darunter starten, ihre Trennlinien bleiben dann stehen |
 | `MAX_SPACING` / `MAX_PADDING` / `MAX_CORNER_RADIUS` | 0.05 / 0.1 / 0.1 | Grenzen des gespeicherten Stils (Schieberegler); wirksam wird der Stil über `effective_style` |
 | `MAX_ZOOM` | 5.0 | Sinnvolle Obergrenze für Pinch-Zoom |
-| Export-Format | JPEG, Qualität 90 (einstellbar 85/90/95), Langkante 3000 px (einstellbar 2000–6000) | Galerie- und Teilen-kompatibel |
+| Export-Format | JPEG, Qualität 95 (einstellbar: Niedrig 75, Normal 85, Hoch 95 oder eigener Wert 25–100), Langkante 3000 px (einstellbar 2000–6000) | Galerie- und Teilen-kompatibel |
 
 Überschreitet ein Bild eine der `DECODE_*`-Grenzen, sieht der Benutzer die Meldung „zu groß“ (nicht „unlesbar“).
 

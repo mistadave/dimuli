@@ -77,18 +77,32 @@ pub enum AspectRatio {
     Square,
     /// 4:5 (portrait)
     Portrait4x5,
+    /// 3:4 (portrait)
+    Portrait3x4,
+    /// 2:3 (portrait)
+    Portrait2x3,
     /// 9:16 (story, portrait)
     Story9x16,
+    /// 4:3 (landscape)
+    Landscape4x3,
+    /// 3:2 (landscape)
+    Landscape3x2,
     /// 16:9 (landscape)
     Landscape16x9,
 }
 
 impl AspectRatio {
-    /// All formats in display order.
-    pub const ALL: [AspectRatio; 4] = [
+    /// All formats in display order: the square, the portrait formats from near-square to tall, then the
+    /// landscape formats from near-square to wide. Shown in rows of four, so the second row starts with the
+    /// tallest format.
+    pub const ALL: [AspectRatio; 8] = [
         AspectRatio::Square,
         AspectRatio::Portrait4x5,
+        AspectRatio::Portrait3x4,
+        AspectRatio::Portrait2x3,
         AspectRatio::Story9x16,
+        AspectRatio::Landscape4x3,
+        AspectRatio::Landscape3x2,
         AspectRatio::Landscape16x9,
     ];
 
@@ -97,7 +111,11 @@ impl AspectRatio {
         let (w, h) = match self {
             AspectRatio::Square => (1.0, 1.0),
             AspectRatio::Portrait4x5 => (4.0, 5.0),
+            AspectRatio::Portrait3x4 => (3.0, 4.0),
+            AspectRatio::Portrait2x3 => (2.0, 3.0),
             AspectRatio::Story9x16 => (9.0, 16.0),
+            AspectRatio::Landscape4x3 => (4.0, 3.0),
+            AspectRatio::Landscape3x2 => (3.0, 2.0),
             AspectRatio::Landscape16x9 => (16.0, 9.0),
         };
         Size::new(1.0, h / w)
@@ -991,8 +1009,8 @@ mod tests {
     }
 
     /// Every 10-36 template in every format at default and maximum style: valid, exact gaps,
-    /// and cells large enough (except 16:9 at maximum style, simulated minimum 0.0359 at 36
-    /// images, where only positive size is guaranteed).
+    /// and cells large enough (except 16:9 and 3:2 at maximum style, 16:9 simulated minimum 0.0359 and
+    /// 3:2 0.0490 at 36 images, where only positive size is guaranteed).
     #[test]
     fn many_images_templates_produce_valid_cells_in_every_format() {
         let styles = [(Style::default(), false), (max_style(), true)];
@@ -1011,7 +1029,11 @@ mod tests {
                         assert_eq!(placements.len(), count, "{name}");
                         assert_inside(&placements, content, &name);
                         assert_no_overlap(&placements, &name);
-                        let need_min = !is_max || aspect != AspectRatio::Landscape16x9;
+                        let wide = matches!(
+                            aspect,
+                            AspectRatio::Landscape16x9 | AspectRatio::Landscape3x2
+                        );
+                        let need_min = !(is_max && wide);
                         for p in &placements {
                             let r = p.rect;
                             assert!(r.width > 0.0 && r.height > 0.0, "{name}: {r:?}");

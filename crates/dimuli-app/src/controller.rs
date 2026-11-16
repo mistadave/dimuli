@@ -168,6 +168,23 @@ impl Controller {
             .change_settings(|s| s.set_export_size(i)));
         on!(on_export_quality_selected, |c, i| c
             .change_settings(|s| s.set_export_quality(i)));
+        on!(on_export_quality_custom_selected, |c| c
+            .update(AppState::select_custom_quality));
+        on!(on_export_quality_changed, |c, v| c
+            .edit_settings(|s| s.set_export_quality_value(v)));
+        on!(on_export_quality_stepped, |c, d| c
+            .change_settings(|s| s.step_export_quality(d)));
+        on!(on_color_picker_requested, |c| c.update(|s| {
+            s.open_color_picker();
+        }));
+        on!(on_color_picker_cancelled, |c| c
+            .update(AppState::close_color_picker));
+        on!(on_color_picker_applied, |c, color| c.change_settings(|s| s
+            .apply_picker_color(
+                color.red(),
+                color.green(),
+                color.blue()
+            )));
         on!(on_settings_committed, |c| c.commit_settings());
         on!(on_settings_reset, |c| c
             .change_settings(AppState::reset_settings_to_factory));
