@@ -124,7 +124,7 @@ None. The plan was executed as written. The only harness addition was the `logca
 
 ## Environment state left behind
 
-- Emulator dimuli_api36 (`emulator-5554`) is still running, started as a background task of this agent. Stop it with `adb -s emulator-5554 emu kill` when it is no longer needed.
+- Emulator dimuli_api36 (`emulator-5554`) is no longer running. Its background task was killed (exit 137) after the report had been handed back, and all passes had already been recorded by then. Afterwards `adb devices` listed neither the emulator nor the phone 8200fcc9. Before the next device test, re-attach the phone over usbipd (see README).
 - Evidence (gitignored): `android/build/smoke/p7-tracer.txt`, `p7-commands.txt`, `p7-agents.txt`, `p7-device-8200fcc9-smoke.txt`, `p7-logs/`, plus `target/p7-docs/{a.jpg,b.png}`.
 
 ## Self-Check: PASSED
