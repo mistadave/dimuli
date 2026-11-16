@@ -15,9 +15,13 @@ use slint::ComponentHandle;
 
 use crate::images;
 use crate::platform::{Platform, PlatformEvent};
-use crate::state::{AppState, BackOutcome, ExportAction, ExportJob, Screen};
+use crate::state::{AppState, BackOutcome, Busy, ExportAction, ExportJob, Screen};
 use crate::ui::{AppWindow, Backend, Theme};
 use crate::view::Models;
+
+/// How long copying and decoding picked images may take before the busy overlay appears; shorter waits
+/// finish without any flash.
+const BUSY_OVERLAY_DELAY: Duration = Duration::from_millis(250);
 
 /// How long a success message stays visible. Errors and notices stay until dismissed.
 const MESSAGE_HIDE_AFTER: Duration = Duration::from_secs(3);
@@ -49,6 +53,8 @@ pub(crate) struct Controller {
     models: Models,
     /// Hides success messages; restarted when a new success message appears.
     message_timer: slint::Timer,
+    /// Reveals the busy overlay when copying/loading takes longer than [`BUSY_OVERLAY_DELAY`].
+    overlay_timer: slint::Timer,
     /// Sequence number of the success message the timer was started for.
     armed_seq: Cell<Option<u64>>,
     collage_open_pushed: Cell<Option<bool>>,
@@ -63,6 +69,7 @@ impl Controller {
             state: RefCell::new(AppState::new()),
             models: Models::new(),
             message_timer: slint::Timer::default(),
+            overlay_timer: slint::Timer::default(),
             armed_seq: Cell::new(None),
             collage_open_pushed: Cell::new(None),
         });
@@ -162,14 +169,19 @@ impl Controller {
         let Some(window) = self.window.upgrade() else {
             return;
         };
-        let (snapshot, success_seq, open) = {
+        let (snapshot, success_seq, open, awaiting_reveal) = {
             let state = self.state.borrow();
             (
                 self.models.snapshot(&state),
                 state.success_seq(),
                 state.screen == Screen::Editor,
+                matches!(state.busy, Some(Busy::Copying | Busy::Decoding)),
             )
         };
+        // The reveal timer is only useful while the overlay is still hidden and a wait is going on.
+        if !awaiting_reveal {
+            self.overlay_timer.stop();
+        }
         self.models.apply(&window, snapshot);
         if self.collage_open_pushed.get() != Some(open) {
             self.collage_open_pushed.set(Some(open));
@@ -216,6 +228,22 @@ impl Controller {
     pub(crate) fn handle_platform_event(&self, event: PlatformEvent) {
         match event {
             PlatformEvent::ImagesPicked { paths, failed } => self.start_loading(paths, failed),
+            PlatformEvent::PickCopying => {
+                let seq = self.state.borrow_mut().pick_copying();
+                if let Some(seq) = seq {
+                    // The closure holds no `Rc`: it finds the controller through `CURRENT` (UI thread).
+                    self.overlay_timer.start(
+                        slint::TimerMode::SingleShot,
+                        BUSY_OVERLAY_DELAY,
+                        move || {
+                            let controller = CURRENT.with(|current| current.borrow().upgrade());
+                            if let Some(controller) = controller {
+                                controller.update(|s| s.reveal_busy(seq));
+                            }
+                        },
+                    );
+                }
+            }
             PlatformEvent::PickFailed(message) => {
                 log::error!("picking images failed: {message}");
                 self.update(|s| s.pick_failed(message));

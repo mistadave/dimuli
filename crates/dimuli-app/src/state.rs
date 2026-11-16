@@ -92,12 +92,21 @@ pub(crate) enum ExportAction {
     Share,
 }
 
-/// Why the UI is blocked by the busy overlay.
+/// Why the UI is blocked. Input is ignored for every variant; only some show the busy overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Busy {
-    /// The system Photo Picker is open or Kotlin is still copying the picked images.
+    /// The system Photo Picker is open. Invisible: the picker covers the screen, and an overlay would only
+    /// flash during its slide-in and slide-out animation.
     Picking,
-    /// Images are being decoded.
+    /// The user picked images and Kotlin copies them (then they are decoded). Invisible at first so a fast
+    /// copy does not flash the overlay; [`AppState::reveal_busy`] turns it into [`Busy::CopyingShown`] after a delay.
+    Copying,
+    /// Like [`Busy::Copying`], but the wait was long enough to show the overlay.
+    CopyingShown,
+    /// Images are being decoded (the loader runs) while the overlay is still hidden; like [`Busy::Copying`]
+    /// it becomes visible ([`Busy::Loading`]) via [`AppState::reveal_busy`].
+    Decoding,
+    /// Images are being decoded and the overlay is shown.
     Loading,
     /// The collage is being rendered.
     Exporting,
@@ -107,10 +116,17 @@ impl Busy {
     /// Text shown below the progress indicator.
     pub(crate) fn text(self) -> &'static str {
         match self {
-            // Same overlay as loading: from the user's view it is one continuous wait.
-            Busy::Picking | Busy::Loading => texts::LOADING,
+            // Copying and decoding are one continuous wait from the user's view.
+            Busy::Picking | Busy::Copying | Busy::CopyingShown | Busy::Decoding | Busy::Loading => {
+                texts::LOADING
+            }
             Busy::Exporting => texts::EXPORTING,
         }
+    }
+
+    /// Whether the busy overlay is shown (input is blocked by the state either way).
+    pub(crate) fn is_visible(self) -> bool {
+        matches!(self, Busy::CopyingShown | Busy::Loading | Busy::Exporting)
     }
 }
 
@@ -129,6 +145,8 @@ pub(crate) struct AppState {
     pub(crate) images: ImageStore,
     /// `Some` while a background task runs; the overlay then blocks all input.
     pub(crate) busy: Option<Busy>,
+    /// Counts [`AppState::pick_copying`] calls, so a late reveal timer of an earlier pick does nothing.
+    copy_seq: u64,
     pub(crate) message: Option<Message>,
     /// Sequence number of the last shown message.
     pub(crate) message_seq: u64,
@@ -154,6 +172,7 @@ impl AppState {
             collage: None,
             images: ImageStore::default(),
             busy: None,
+            copy_seq: 0,
             message: None,
             message_seq: 0,
             templates: Vec::new(),
@@ -250,9 +269,8 @@ impl AppState {
 
     // --- loading ---
 
-    /// Marks the picker as opened and raises the loading overlay, so a second tap cannot open another
-    /// picker while Kotlin still copies the picks. `false` (nothing changed) unless the start screen is
-    /// shown and nothing is busy.
+    /// Marks the picker as opened (invisibly, see [`Busy::Picking`]), so a second tap cannot open another
+    /// picker. `false` (nothing changed) unless the start screen is shown and nothing is busy.
     pub(crate) fn begin_picking(&mut self) -> bool {
         if self.busy.is_some() || self.screen != Screen::Start {
             return false;
@@ -262,16 +280,46 @@ impl AppState {
         true
     }
 
-    /// The picker was cancelled: releases the overlay. Other busy states are left alone.
+    /// The user picked images and Kotlin starts copying them: switches the invisible picker lock to the
+    /// deferred loading state. Returns the sequence number for [`AppState::reveal_busy`], or `None`
+    /// (no-op) if the picker was not the current busy state.
+    pub(crate) fn pick_copying(&mut self) -> Option<u64> {
+        if self.busy != Some(Busy::Picking) {
+            return None;
+        }
+        self.busy = Some(Busy::Copying);
+        self.copy_seq = self.copy_seq.wrapping_add(1);
+        Some(self.copy_seq)
+    }
+
+    /// Shows the loading overlay if copying/loading of pick `seq` is still going on; otherwise does nothing.
+    pub(crate) fn reveal_busy(&mut self, seq: u64) {
+        if self.copy_seq != seq {
+            return;
+        }
+        match self.busy {
+            Some(Busy::Copying) => self.busy = Some(Busy::CopyingShown),
+            Some(Busy::Decoding) => self.busy = Some(Busy::Loading),
+            _ => {}
+        }
+    }
+
+    /// The picker was cancelled: releases the lock. Other busy states are left alone.
     pub(crate) fn pick_cancelled(&mut self) {
-        if self.busy == Some(Busy::Picking) {
+        if matches!(
+            self.busy,
+            Some(Busy::Picking | Busy::Copying | Busy::CopyingShown)
+        ) {
             self.busy = None;
         }
     }
 
-    /// The picker failed: releases the overlay (if it was the picker's) and shows the error.
+    /// The picker or the copying failed: releases the lock (if it was the picker's) and shows the error.
     pub(crate) fn pick_failed(&mut self, text: impl Into<String>) {
-        if self.busy == Some(Busy::Picking) {
+        if matches!(
+            self.busy,
+            Some(Busy::Picking | Busy::Copying | Busy::CopyingShown)
+        ) {
             self.busy = None;
         }
         self.show_error(text);
@@ -279,13 +327,22 @@ impl AppState {
 
     /// Marks loading as started. `false` if loading is already running or the editor is open.
     /// Only possible on the start screen: a late pick result must not wipe an open collage.
-    /// The waiting state of the picker ([`Busy::Picking`]) is accepted: its answer starts the loading.
+    /// Accepted from exactly: no busy state, [`Busy::Picking`], [`Busy::Copying`] and [`Busy::CopyingShown`].
+    /// Afterwards the state is [`Busy::Decoding`] (from `Copying`, overlay delay keeps running) or
+    /// [`Busy::Loading`] (otherwise), so a second call while the loader runs is refused.
     pub(crate) fn begin_loading(&mut self) -> bool {
-        let waiting = matches!(self.busy, None | Some(Busy::Picking));
+        let waiting = matches!(
+            self.busy,
+            None | Some(Busy::Picking | Busy::Copying | Busy::CopyingShown)
+        );
         if !waiting || self.screen != Screen::Start {
             return false;
         }
-        self.busy = Some(Busy::Loading);
+        self.busy = Some(if self.busy == Some(Busy::Copying) {
+            Busy::Decoding
+        } else {
+            Busy::Loading
+        });
         self.message = None;
         self.images.clear();
         true
@@ -307,7 +364,7 @@ impl AppState {
         failed_copies: usize,
     ) {
         // A result that arrives after the app left the loading state (e.g. a recreated activity) is stale.
-        if self.busy != Some(Busy::Loading) {
+        if !matches!(self.busy, Some(Busy::Loading | Busy::Decoding)) {
             log::warn!("late loading result dropped");
             return;
         }
@@ -1307,13 +1364,143 @@ mod tests {
     }
 
     #[test]
-    fn pick_shows_the_loading_overlay_until_the_picker_answers() {
+    fn picking_locks_input_without_showing_the_overlay() {
         let mut state = AppState::new();
         state.show_error("old");
         assert!(state.begin_picking());
         assert_eq!(state.busy, Some(Busy::Picking));
+        assert!(!Busy::Picking.is_visible());
         assert_eq!(Busy::Picking.text(), crate::texts::LOADING);
         assert_eq!(state.message, None);
+    }
+
+    #[test]
+    fn pick_copying_defers_the_overlay_until_revealed() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        let seq = state.pick_copying().unwrap();
+        assert_eq!(state.busy, Some(Busy::Copying));
+        assert!(!Busy::Copying.is_visible());
+        assert!(!state.begin_picking());
+        state.reveal_busy(seq);
+        assert_eq!(state.busy, Some(Busy::CopyingShown));
+        assert!(Busy::CopyingShown.is_visible());
+    }
+
+    #[test]
+    fn stale_reveal_does_nothing() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        let old = state.pick_copying().unwrap();
+        state.pick_cancelled();
+        assert!(state.busy.is_none());
+        state.reveal_busy(old);
+        assert!(state.busy.is_none());
+        assert!(state.begin_picking());
+        let new = state.pick_copying().unwrap();
+        state.reveal_busy(old);
+        assert_eq!(state.busy, Some(Busy::Copying));
+        state.reveal_busy(new);
+        assert_eq!(state.busy, Some(Busy::CopyingShown));
+    }
+
+    #[test]
+    fn fast_copy_and_load_never_shows_the_overlay() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        let seq = state.pick_copying().unwrap();
+        assert!(state.begin_loading());
+        assert_eq!(state.busy, Some(Busy::Decoding));
+        assert!(!Busy::Decoding.is_visible());
+        state.finish_loading(vec![Ok(loaded(10, 10))], false, 0);
+        assert_eq!(state.screen, Screen::Editor);
+        assert!(state.busy.is_none());
+        state.reveal_busy(seq);
+        assert!(state.busy.is_none());
+    }
+
+    #[test]
+    fn slow_copy_and_load_keeps_the_revealed_overlay() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        let seq = state.pick_copying().unwrap();
+        state.reveal_busy(seq);
+        assert!(state.begin_loading());
+        assert_eq!(state.busy, Some(Busy::Loading));
+        state.finish_loading(vec![Ok(loaded(10, 10))], false, 0);
+        assert!(state.busy.is_none());
+    }
+
+    #[test]
+    fn reveal_during_decoding_shows_the_overlay() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        let seq = state.pick_copying().unwrap();
+        assert!(state.begin_loading());
+        state.reveal_busy(seq);
+        assert_eq!(state.busy, Some(Busy::Loading));
+        assert!(Busy::Loading.is_visible());
+    }
+
+    #[test]
+    fn second_begin_loading_is_refused_while_decoding() {
+        for reveal in [false, true] {
+            let mut state = AppState::new();
+            assert!(state.begin_picking());
+            let seq = state.pick_copying().unwrap();
+            assert!(state.begin_loading());
+            if reveal {
+                state.reveal_busy(seq);
+            }
+            let busy = state.busy;
+            assert!(!state.begin_loading());
+            assert_eq!(state.busy, busy);
+        }
+    }
+
+    #[test]
+    fn begin_loading_in_the_editor_is_refused_in_every_picking_state() {
+        // Expected: a late pick answer changes nothing; the collage and the busy state stay as they were.
+        for busy in [Busy::Picking, Busy::Copying, Busy::CopyingShown] {
+            let mut state = editor(&[(100, 100)]);
+            state.busy = Some(busy);
+            assert!(!state.begin_loading());
+            assert_eq!(state.busy, Some(busy));
+            assert_eq!(state.screen, Screen::Editor);
+            assert_eq!(state.images.len(), 1);
+            assert!(state.collage.is_some());
+        }
+    }
+
+    #[test]
+    fn pick_copying_is_a_no_op_unless_picking() {
+        let mut state = AppState::new();
+        assert_eq!(state.pick_copying(), None);
+        assert!(state.busy.is_none());
+        for busy in [
+            Busy::Loading,
+            Busy::Exporting,
+            Busy::Copying,
+            Busy::CopyingShown,
+            Busy::Decoding,
+        ] {
+            state.busy = Some(busy);
+            assert_eq!(state.pick_copying(), None);
+            assert_eq!(state.busy, Some(busy));
+        }
+    }
+
+    #[test]
+    fn cancel_or_failure_after_copying_releases_the_lock() {
+        let mut state = AppState::new();
+        assert!(state.begin_picking());
+        state.pick_copying();
+        state.pick_failed(crate::texts::PICK_FAILED);
+        assert!(state.busy.is_none());
+        assert!(state.begin_picking());
+        state.pick_copying();
+        state.pick_cancelled();
+        assert!(state.busy.is_none());
     }
 
     #[test]
@@ -1323,7 +1510,13 @@ mod tests {
         assert!(!state.begin_picking());
         assert_eq!(state.busy, Some(Busy::Picking));
 
-        for busy in [Busy::Loading, Busy::Exporting] {
+        for busy in [
+            Busy::Copying,
+            Busy::CopyingShown,
+            Busy::Decoding,
+            Busy::Loading,
+            Busy::Exporting,
+        ] {
             let mut state = AppState::new();
             state.busy = Some(busy);
             assert!(!state.begin_picking());

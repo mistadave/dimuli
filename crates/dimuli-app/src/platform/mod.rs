@@ -39,6 +39,8 @@ pub trait Platform {
 pub enum PlatformEvent {
     /// Readable copies and the count of failed copies; empty paths and zero failures means cancelled.
     ImagesPicked { paths: Vec<PathBuf>, failed: usize },
+    /// The user chose images and the platform now copies them; [`PlatformEvent::ImagesPicked`] follows.
+    PickCopying,
     /// Picking was not possible; carries a message for the user.
     PickFailed(String),
     /// Result of saving to the gallery; the error is a message for the user.

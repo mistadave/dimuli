@@ -103,6 +103,10 @@ Was daraus folgt:
 - [x] 8. **Mehr als 9 Bilder:** Raster-Generator in `templates`, der für jede Bildanzahl ein Layout erzeugt;
   `MAX_IMAGES` auf 36 angehoben (6x6; darüber verdecken die Trennlinien-Griffe zu viel der Felder). Speicher und Bedienbarkeit
   mit vielen Bildern im Emulator prüfen.
+- [x] 9. **Nachbesserungen nach dem Gerätetest (OnePlus):** Kein Lade-Overlay, solange der Photo Picker offen ist
+  (nur unsichtbare Eingabesperre); „Lädt…“ erst, wenn Kotlin die gewählten Bilder kopiert, und nur wenn Kopieren und
+  Laden länger als 250 ms dauern. Lade-Punkt mittig zentriert. Standard-Abstand zwischen den Bildern 0
+  (Außenrand unverändert 1 %).
 
 ## Wichtige Abhängigkeiten
 `slint` (+ `slint-build`), `image`, `tiny-skia`, `jni`, `android_logger`, `log`, `thiserror`; nur auf dem Desktop: `env_logger`.

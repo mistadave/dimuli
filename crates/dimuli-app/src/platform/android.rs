@@ -179,7 +179,7 @@ impl Platform for AndroidPlatform {
 
 // jni 0.22.4's macro expansion calls AtomicBool::fetch_update (deprecated since Rust 1.99).
 #[allow(deprecated)]
-const NATIVES: [jni::NativeMethod<'static>; 5] = [
+const NATIVES: [jni::NativeMethod<'static>; 6] = [
     native_method! {
         fn native_back_pressed(),
         fn = native_back_pressed,
@@ -188,6 +188,11 @@ const NATIVES: [jni::NativeMethod<'static>; 5] = [
     native_method! {
         fn native_images_picked(paths: java.lang.String[], failed: jint),
         fn = native_images_picked,
+        error_policy = LogErrorAndDefault
+    },
+    native_method! {
+        fn native_pick_copying(),
+        fn = native_pick_copying,
         error_policy = LogErrorAndDefault
     },
     native_method! {
@@ -233,6 +238,15 @@ fn native_images_picked<'local>(
         log::error!("{failed} picked images could not be copied");
     }
     post_event(images_picked_event(list, failed));
+    Ok(())
+}
+
+/// The user picked images; Kotlin starts copying them into the cache.
+fn native_pick_copying<'local>(
+    _env: &mut Env<'local>,
+    _this: JObject<'local>,
+) -> jni::errors::Result<()> {
+    post_event(PlatformEvent::PickCopying);
     Ok(())
 }
 

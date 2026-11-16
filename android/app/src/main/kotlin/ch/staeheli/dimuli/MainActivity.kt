@@ -190,6 +190,9 @@ class MainActivity : NativeActivity() {
      */
     private external fun nativeImagesPicked(paths: Array<String>, failed: Int)
 
+    /** Rust: `native_pick_copying` in platform/android.rs, JNI signature `()V`. The user picked images. */
+    private external fun nativePickCopying()
+
     /** Rust: `native_pick_failed` in platform/android.rs, JNI signature `()V`. */
     private external fun nativePickFailed()
 
@@ -231,6 +234,8 @@ class MainActivity : NativeActivity() {
             native { nativeImagesPicked(emptyArray(), 0) }
             return
         }
+        // Lets Rust show the loading overlay if copying takes long; the picker itself shows none.
+        native { nativePickCopying() }
         runOnIo({ native { nativePickFailed() } }) {
             val copied = copyToCache(uris)
             native { nativeImagesPicked(copied.paths.toTypedArray(), copied.failed) }

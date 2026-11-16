@@ -17,20 +17,24 @@ export component BusyOverlay inherits Rectangle {
     VerticalLayout {
         alignment: center;
         spacing: Theme.spacing-m;
-        pulse := Rectangle {
-            property <float> phase: 0.3;
-            width: Theme.touch-target;
-            height: Theme.touch-target;
-            border-radius: self.width / 2;
-            background: Theme.primary;
-            opacity: self.phase;
-            animate phase {
-                duration: Theme.pulse;
-                iteration-count: -1;
-                direction: alternate;
-            }
-            init => {
-                self.phase = 1.0;
+        // A fixed-size child would sit at the left edge of the vertical layout.
+        HorizontalLayout {
+            alignment: center;
+            pulse := Rectangle {
+                property <float> phase: 0.3;
+                width: Theme.touch-target;
+                height: Theme.touch-target;
+                border-radius: self.width / 2;
+                background: Theme.primary;
+                opacity: self.phase;
+                animate phase {
+                    duration: Theme.pulse;
+                    iteration-count: -1;
+                    direction: alternate;
+                }
+                init => {
+                    self.phase = 1.0;
+                }
             }
         }
         Text {
