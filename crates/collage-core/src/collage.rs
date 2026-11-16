@@ -143,7 +143,7 @@ pub struct Style {
 impl Default for Style {
     fn default() -> Self {
         Self {
-            spacing: 0.01,
+            spacing: 0.0,
             padding: 0.01,
             corner_radius: 0.0,
             background: Rgba::WHITE,
@@ -507,11 +507,22 @@ mod tests {
     }
 
     #[test]
+    fn default_style_has_no_spacing() {
+        let style = Style::default();
+        assert!(close(style.spacing, 0.0));
+        assert!(close(style.padding, 0.01));
+    }
+
+    #[test]
     fn effective_style_scales_from_five_cells_per_line() {
         let imgs = images(&[(30, 20); 10]);
         let template = crate::templates::test_grid(SplitDir::TopBottom, &[5, 5]);
         let mut c = Collage::new(&imgs, &template).unwrap();
         c.set_aspect(AspectRatio::Square);
+        c.set_style(Style {
+            spacing: 0.01,
+            ..Style::default()
+        });
         let eff = c.effective_style();
         assert!(close(eff.spacing, 0.008));
         assert!(close(eff.padding, 0.008));
@@ -576,6 +587,10 @@ mod tests {
             let template = crate::templates::test_grid(SplitDir::TopBottom, &[cells]);
             let mut c = Collage::new(&imgs, &template).unwrap();
             c.set_aspect(AspectRatio::Square);
+            c.set_style(Style {
+                spacing: 0.01,
+                ..Style::default()
+            });
             let p = c.placements();
             let gap = p[1].rect.x - p[0].rect.right();
             gap / p[0].rect.width
